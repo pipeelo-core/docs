@@ -24,7 +24,7 @@
         "/chats/analysis/combined": {
             "get": {
                 "operationId": "chatAnalysis.combined",
-                "description": "Retorna, numa única requisição, a análise do cliente já casada com a análise do atendente da mesma conversa: tags das duas, textos completos, protocolo, departamento e quem interagiu. Cada item traz o que falta fazer (`action`), o cliente e, quando a conversa tem histórico, motivo, satisfação e alertas. O período é obrigatório e limitado a 366 dias; com `search` (telefone do cliente ou protocolo), ele é ignorado e os demais filtros continuam valendo. A paginação é por cursor: a primeira página vai sem `cursor` e as seguintes reenviam o `next_cursor` da resposta anterior com os mesmos filtros — mudou algum filtro, o cursor é descartado. Os assistentes são resolvidos por tipo (`ANALYSER` e `ATTENDANT_ANALYSER`); tenant sem nenhum analisador recebe `data: []`. Departamento e humano/IA são os da conversa no momento em que a análise foi gerada; conversa atendida só pela IA e sem departamento recebe, no fechamento, um grupo de departamentos ou um departamento sem grupo escolhido pela IA a partir da conversa — no caso do grupo, `category_name` traz o nome do grupo e `category_id` não vem. Atendente recebe 403; gerente enxerga conversas dos seus departamentos e, sem `category_ids`, também as conversas só com IA dos grupos dos seus departamentos e as sem departamento (a partir de 08/10/2026); `category_ids` é interseccionado com o escopo dele.",
+                "description": "Retorna, numa única requisição, a análise do cliente já casada com a análise do atendente da mesma conversa: tags, a avaliação de cada atendente, textos completos, protocolo, departamento e quem participou (`interaction_users`, em ordem de entrada na conversa, preenchido depois que os números do atendimento são gravados, alguns minutos após o fechamento). Cada item traz o que falta fazer (`action`), o cliente e, quando a conversa tem histórico, motivo, satisfação e alertas. O período é obrigatório e limitado a 366 dias; com `search` (telefone do cliente ou protocolo), ele é ignorado e os demais filtros continuam valendo. A paginação é por cursor: a primeira página vai sem `cursor` e as seguintes reenviam o `next_cursor` da resposta anterior com os mesmos filtros — mudou algum filtro, o cursor é descartado. Os assistentes são resolvidos por tipo (`ANALYSER` e `ATTENDANT_ANALYSER`); tenant sem nenhum analisador recebe `data: []`. Departamento e humano/IA são os da conversa no momento em que a análise foi gerada; conversa atendida só pela IA e sem departamento recebe, no fechamento, um grupo de departamentos ou um departamento sem grupo escolhido pela IA a partir da conversa — no caso do grupo, `category_name` traz o nome do grupo e `category_id` não vem. Atendente recebe 403; gerente enxerga conversas dos seus departamentos e, sem `category_ids`, também as conversas só com IA dos grupos dos seus departamentos e as sem departamento (a partir de 08/10/2026); `category_ids` é interseccionado com o escopo dele. Gerente com permissão de ver todos os departamentos (`can_view_all_departments`) que envia `all_departments=1` vê como admin.",
                 "summary": "Listar análises de conversa combinadas",
                 "tags": [
                     "Análise de conversas"
@@ -102,7 +102,7 @@
                     {
                         "name": "user_id",
                         "in": "query",
-                        "description": "Conversas em que esse atendente interagiu, considerando interações a partir de 30 dias antes do início do período; com `search`, sem limite de data.",
+                        "description": "Conversas fechadas em que esse atendente participou, considerando fechamentos a partir de 30 dias antes do início do período; com `search`, sem limite de data.",
                         "schema": {
                             "type": [
                                 "string",
@@ -161,6 +161,17 @@
                                 "null"
                             ],
                             "maxLength": 50
+                        }
+                    },
+                    {
+                        "name": "all_departments",
+                        "in": "query",
+                        "description": "Com `1`, o gerente com permissão de ver todos os departamentos vê como admin. Sem a permissão, é ignorado.",
+                        "schema": {
+                            "type": [
+                                "boolean",
+                                "null"
+                            ]
                         }
                     }
                 ],
@@ -317,6 +328,96 @@
                                                         "description": "Sinais anotados no histórico da conversa. Cada um é um alerta.",
                                                         "items": {
                                                             "type": "string"
+                                                        }
+                                                    },
+                                                    "evaluations": {
+                                                        "type": "array",
+                                                        "description": "Avaliação de cada atendente que escreveu na conversa, feita pelo analisador de atendente. Só vem quando a conversa tem avaliação; a ordem dos atendentes não é a da conversa.",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "user": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "id": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "name": {
+                                                                            "type": "string"
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "id",
+                                                                        "name"
+                                                                    ]
+                                                                },
+                                                                "evaluation": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "score": {
+                                                                            "type": [
+                                                                                "number",
+                                                                                "null"
+                                                                            ],
+                                                                            "description": "Nota geral de 0 a 10, com 1 casa: média das notas dos itens com os pesos do prompt. `null` quando nenhum item tem peso."
+                                                                        },
+                                                                        "items": {
+                                                                            "type": "array",
+                                                                            "description": "Itens que o prompt avaliou; item sem dado para avaliar não vem.",
+                                                                            "items": {
+                                                                                "type": "object",
+                                                                                "properties": {
+                                                                                    "key": {
+                                                                                        "type": "string"
+                                                                                    },
+                                                                                    "weight": {
+                                                                                        "type": "number"
+                                                                                    },
+                                                                                    "score": {
+                                                                                        "type": "number",
+                                                                                        "description": "Nota de 0 a 10."
+                                                                                    }
+                                                                                },
+                                                                                "required": [
+                                                                                    "key",
+                                                                                    "weight",
+                                                                                    "score"
+                                                                                ]
+                                                                            }
+                                                                        },
+                                                                        "summary": {
+                                                                            "type": "string"
+                                                                        },
+                                                                        "strengths": {
+                                                                            "type": "array",
+                                                                            "items": {
+                                                                                "type": "string"
+                                                                            }
+                                                                        },
+                                                                        "improvements": {
+                                                                            "type": "array",
+                                                                            "items": {
+                                                                                "type": "string"
+                                                                            }
+                                                                        },
+                                                                        "recommendation": {
+                                                                            "type": "string"
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "score",
+                                                                        "items",
+                                                                        "summary",
+                                                                        "strengths",
+                                                                        "improvements",
+                                                                        "recommendation"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "user",
+                                                                "evaluation"
+                                                            ]
                                                         }
                                                     }
                                                 },
@@ -1849,7 +1950,7 @@
         "/website-channel/history/{identifier}": {
             "get": {
                 "operationId": "websiteChannelMessage.history",
-                "description": "Endpoint público, sem token: retorna a linha do tempo de mensagens do visitante no canal, da mais recente para a mais antiga, paginada por cursor. Inclui os atendimentos que entraram neste canal pelo link do chat web, esteja a conversa agora no site ou no WhatsApp. Use ao abrir a página e ao reconectar o websocket (o socket não reenvia mensagens perdidas) — o histórico é a fonte de verdade da conversa.\n\nSem `chat_id`, a linha do tempo é contínua e cruza todos os atendimentos do visitante — é como o widget da plataforma funciona: uma conversa só, com o bloco `chats` marcando onde cada atendimento terminou. Com `chat_id`, devolve só as mensagens daquele atendimento — para montar uma conversa por atendimento, junto de `GET /website-channel/conversations/{identifier}`. Um `chat_id` que não pertença ao visitante retorna a página vazia.\n\n`chats` descreve os atendimentos presentes na página: `chat_id`, `protocol`, `started_at` e `ended_at` (`null` = atendimento em andamento; o visitante nunca tem mais de um aberto por canal, e ele é sempre o mais recente). É a fonte do estado aberto/encerrado — o evento `website-channel.chat-closed` é só a atualização em tempo real.\n\nCada item tem o mesmo formato do evento de socket: `message_id`, `chat_id`, `external_id`, `type` (`text`, `image`, `audio`, `video`, `document`, `interactive`, `order_details`, `location`, `contacts`, `reaction` ou `template`), `text` (para `template`, o corpo já formatado), `items` e `selected_value` (mensagem interativa), `product_name`, `code` e `value` em centavos (`order_details`/PIX), `latitude` e `longitude` (`location`), `contacts` (lista de `name` e `phone`), `emoji` (`reaction`), `filename` (nome original do arquivo, em mídias), `peaks` (áudio: 64 inteiros de 0 a 100 para desenhar a onda; `null` quando não foi medida — desenhe barras neutras), `link` (quando a mensagem traz um botão de link: `label` e `url`; `null` nas demais — desenhe um botão que abre a `url` em aba nova), `media_url` (link temporário válido por 1 hora — se expirar, recarregue o histórico para gerar um novo), `from` (`customer` = visitante; `company` = IA ou atendente), `created_at` e `reply_to` (quando a mensagem responde a outra — em `reaction`, a mensagem reagida: `message_id`, `from`, `type` e `text` da original, com o texto limitado a 200 caracteres; `null` nas demais ou quando a original não existe mais). Todo campo vem sempre presente e `null` fora do seu tipo.\n\n`external_id` desconhecido retorna a página vazia. Para a próxima página, envie o valor de `next_cursor` no parâmetro `cursor`. Mesmo limite de requisições do endpoint de envio.",
+                "description": "Endpoint público, sem token: retorna a linha do tempo de mensagens do visitante no canal, da mais recente para a mais antiga, paginada por cursor. Inclui os atendimentos que entraram neste canal pelo link do chat web, esteja a conversa agora no site ou no WhatsApp. Use ao abrir a página e ao reconectar o websocket (o socket não reenvia mensagens perdidas) — o histórico é a fonte de verdade da conversa.\n\nSem `chat_id`, a linha do tempo é contínua e cruza todos os atendimentos do visitante — é como o widget da plataforma funciona: uma conversa só, com o bloco `chats` marcando onde cada atendimento terminou. Com `chat_id`, devolve só as mensagens daquele atendimento — para montar uma conversa por atendimento, junto de `GET /website-channel/conversations/{identifier}`. Um `chat_id` que não pertença ao visitante retorna a página vazia.\n\n`chats` descreve os atendimentos presentes na página: `chat_id`, `protocol`, `started_at` e `ended_at` (`null` = atendimento em andamento; o visitante nunca tem mais de um aberto por canal, e ele é sempre o mais recente). É a fonte do estado aberto/encerrado — o evento `website-channel.chat-closed` é só a atualização em tempo real.\n\nCada item tem o mesmo formato do evento de socket: `message_id`, `chat_id`, `external_id`, `type` (`text`, `image`, `audio`, `video`, `document`, `interactive`, `order_details`, `location`, `contacts`, `reaction` ou `template`), `text` (para `template`, o corpo já formatado), `items` e `selected_value` (mensagem interativa), `product_name`, `code` (PIX copia e cola), `digitable_line` (linha digitável do boleto) e `value` em centavos (`order_details`), `latitude` e `longitude` (`location`), `contacts` (lista de `name` e `phone`), `emoji` (`reaction`), `filename` (nome original do arquivo, em mídias), `peaks` (áudio: 64 inteiros de 0 a 100 para desenhar a onda; `null` quando não foi medida — desenhe barras neutras), `link` (quando a mensagem traz um botão de link: `label` e `url`; `null` nas demais — desenhe um botão que abre a `url` em aba nova), `media_url` (link temporário válido por 1 hora — se expirar, recarregue o histórico para gerar um novo), `from` (`customer` = visitante; `company` = IA ou atendente), `created_at` e `reply_to` (quando a mensagem responde a outra — em `reaction`, a mensagem reagida: `message_id`, `from`, `type` e `text` da original, com o texto limitado a 200 caracteres; `null` nas demais ou quando a original não existe mais). Todo campo vem sempre presente e `null` fora do seu tipo.\n\n`external_id` desconhecido retorna a página vazia. Para a próxima página, envie o valor de `next_cursor` no parâmetro `cursor`. Mesmo limite de requisições do endpoint de envio.",
                 "summary": "Histórico da conversa do visitante (público)",
                 "tags": [
                     "Canal do Site"
@@ -1982,6 +2083,12 @@
                                                         ]
                                                     },
                                                     "code": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "digitable_line": {
                                                         "type": [
                                                             "string",
                                                             "null"
@@ -3262,7 +3369,7 @@
         "/calls/incoming-context": {
             "get": {
                 "operationId": "call.incomingContext",
-                "description": "Retorna o contexto da chamada entrante oferecida ao usuário autenticado: chamada, cliente, departamento e conversa relacionada.",
+                "description": "Retorna o contexto da chamada entrante oferecida ao usuário autenticado: chamada, cliente, departamento e conversa relacionada. Quando a chamada é uma transferência com anotação para o usuário, `transfer_note` traz o texto deixado por quem transferiu.",
                 "summary": "Consultar chamada entrante",
                 "tags": [
                     "Chamadas"
@@ -3312,7 +3419,7 @@
         "/calls/token": {
             "post": {
                 "operationId": "call.token",
-                "description": "Gera as credenciais do softphone para o usuário autenticado atender e realizar chamadas no navegador. Retorna uma lista com um item por conta de voz provisionada, na ordem de criação das contas; instancie um SDK por item. O campo `provider` indica o SDK: `twilio` (Twilio Voice, JWT que expira em 1 hora), `telnyx` (`@telnyx/webrtc`, JWT de 24 horas; `identity` traz o `sip_username` da credencial do agente) ou `direct` (SIP.js registrando por WSS no endereço do campo `ws_url`, presente só nesse provider; `identity` é o usuário SIP e `token` é a senha, que não expira — `expires_in` de 24 horas apenas indica quando buscar de novo).",
+                "description": "Gera as credenciais do softphone para o usuário autenticado atender e realizar chamadas no navegador. Retorna uma lista com um item por conta de voz provisionada, na ordem de criação das contas; instancie um SDK por item. O campo `provider` indica o SDK: `twilio` (Twilio Voice, JWT que expira em 1 hora) ou `direct` (SIP.js registrando por WSS no endereço do campo `ws_url`, presente só nesse provider; `identity` é o usuário SIP e `token` é a senha, que não expira — `expires_in` de 24 horas apenas indica quando buscar de novo).",
                 "summary": "Gerar token de voz",
                 "tags": [
                     "Chamadas"
@@ -3340,7 +3447,7 @@
         "/calls/dial": {
             "post": {
                 "operationId": "call.dial",
-                "description": "Inicia uma chamada de saída em contas Telnyx e `direct`: cria a chamada, liga a perna SIP do agente autenticado (atendida automaticamente pelo softphone) e conecta ao número de destino com o caller ID do número informado. Retorna o `call_id` para correlação no softphone. Em contas `direct` a perna do cliente sai pelo tronco da operadora do tenant e o destino é validado antes de discar: só passam os prefixos liberados (Brasil por padrão) e os prefixos tarifados `0300`, `0500` e `0900` são bloqueados (422); o tenant também é limitado a 20 discagens por minuto (429). Números de contas Twilio são recusados.",
+                "description": "Inicia uma chamada de saída em contas `direct`: cria a chamada, liga a perna SIP do agente autenticado (atendida automaticamente pelo softphone) e conecta ao número de destino com o caller ID do número informado. Retorna o `call_id` para correlação no softphone. Em contas `direct` a perna do cliente sai pelo tronco da operadora do tenant e o destino é validado antes de discar: só passam os prefixos liberados (Brasil por padrão) e os prefixos tarifados `0300`, `0500` e `0900` são bloqueados (422); o tenant também é limitado a 20 discagens por minuto (429). Números de contas Twilio são recusados.",
                 "summary": "Discar para um cliente (click-to-call)",
                 "tags": [
                     "Chamadas"
@@ -3417,7 +3524,7 @@
         "/calls/transfer": {
             "post": {
                 "operationId": "call.transfer",
-                "description": "Transfere a chamada em andamento para outro atendente disponível. O atendente atual permanece na ligação enquanto o destino é chamado (25 segundos): se atender, o cliente passa a falar com ele e o atendente atual é desconectado; se não atender, nada muda e a ligação continua com o atendente atual. Disponível apenas para o atendente que está na chamada e para chamadas recebidas em andamento.",
+                "description": "Transfere a chamada em andamento para outro atendente disponível. O atendente atual permanece na ligação enquanto o destino é chamado (25 segundos): se atender, o cliente passa a falar com ele e o atendente atual é desconectado; se não atender, nada muda e a ligação continua com o atendente atual. Disponível apenas para o atendente que está na chamada e para chamadas recebidas em andamento. Aceita uma anotação opcional (`note`) para o atendente de destino, entregue em `transfer_note` de `GET /calls/incoming-context` enquanto a transferência toca.",
                 "summary": "Transferir chamada para outro atendente",
                 "tags": [
                     "Chamadas"
@@ -3898,7 +4005,7 @@
             },
             "post": {
                 "operationId": "call-accounts.store",
-                "description": "Cria a conta de voz no provider escolhido (`provider`: `twilio`, `telnyx` ou `direct`; padrão `twilio`), valida as credenciais e provisiona os recursos remotos. Twilio: `account_sid`, `api_key_sid`, `api_key_secret`, `auth_token`. Telnyx: `api_key`, `public_key`. Direct (tronco SIP): `sip_host`, `sip_port` (padrão 5060), `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (nunca retornada nas leituras); `trunk_status` e `trunk_registration` são reavaliados cerca de 30 segundos depois.",
+                "description": "Cria a conta de voz no provider escolhido (`provider`: `twilio` ou `direct`; padrão `twilio`), valida as credenciais e provisiona os recursos remotos. Twilio: `account_sid`, `api_key_sid`, `api_key_secret`, `auth_token`. Direct (tronco SIP): `sip_host`, `sip_port` (padrão 5060), `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (nunca retornada nas leituras); `trunk_status` e `trunk_registration` são reavaliados cerca de 30 segundos depois.",
                 "summary": "Criar conta de voz",
                 "tags": [
                     "Contas de voz"
@@ -3936,7 +4043,7 @@
         "/call-accounts/{id}": {
             "put": {
                 "operationId": "call-accounts.update",
-                "description": "Atualiza as credenciais conforme o provider da conta. Twilio: `api_key_sid`, `api_key_secret`, `auth_token`. Telnyx: `api_key`, `public_key`. Direct (tronco SIP): `sip_host`, `sip_port`, `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (opcional; ausente mantém a atual); `trunk_status` e `trunk_registration` são zerados e reavaliados cerca de 30 segundos depois.",
+                "description": "Atualiza as credenciais conforme o provider da conta. Twilio: `api_key_sid`, `api_key_secret`, `auth_token`. Direct (tronco SIP): `sip_host`, `sip_port`, `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (opcional; ausente mantém a atual); `trunk_status` e `trunk_registration` são zerados e reavaliados cerca de 30 segundos depois.",
                 "summary": "Atualizar conta de voz",
                 "tags": [
                     "Contas de voz"
@@ -4009,7 +4116,7 @@
         "/chats": {
             "get": {
                 "operationId": "chat.index",
-                "description": "Retorna a lista paginada de conversas do tenant, da mais recente para a mais antiga. A resposta não traz `total`/`last_page` — use `next_page_url` para saber se há próxima página. Combine os filtros de estado, canal, atendente e período conforme necessário — com `search` por protocolo, os demais filtros são ignorados; por telefone ou nome eles se aplicam, e nome só é aceito com `filters=opened` (fora dele, 422). Com `orderby` de mensagem (`newest-message`/`oldest-message`), o filtro `opened` é obrigatório. Cada item traz `category_id` só quando tem departamento e `queued_at` só quando está na fila.",
+                "description": "Retorna a lista paginada de conversas do tenant, da mais recente para a mais antiga. A resposta não traz `total`/`last_page` — use `next_page_url` para saber se há próxima página. Combine os filtros de estado, canal, atendente e período conforme necessário — com `search` por protocolo, os demais filtros são ignorados, inclusive `department_ids`; por telefone ou nome eles se aplicam, e nome só é aceito com `filters=opened` (fora dele, 422). Com `orderby` de mensagem (`newest-message`/`oldest-message`), o filtro `opened` é obrigatório. Cada item traz `category_id` só quando tem departamento, `queued_at` só quando está na fila e `closed_by` (`id` e `name`) só quando a conversa tem quem a fechou, inclusive usuário removido.",
                 "summary": "Listar conversas",
                 "tags": [
                     "Conversas"
@@ -4018,7 +4125,7 @@
                     {
                         "name": "search",
                         "in": "query",
-                        "description": "Busca por protocolo, por telefone (qualquer parte do número, mínimo 5 dígitos, com ou sem máscara) ou por início do nome do cliente (mínimo 5 caracteres). Nome só é aceito com `filters=opened`; fora dele, apenas telefone ou protocolo (422). Busca por telefone ampla demais retorna 422 — informe mais dígitos. Com protocolo, os demais filtros são ignorados; com telefone ou nome, os filtros se aplicam normalmente.",
+                        "description": "Busca por protocolo, por telefone (qualquer parte do número, mínimo 5 dígitos, com ou sem máscara) ou por início do nome do cliente (mínimo 5 caracteres). Nome só é aceito com `filters=opened`; fora dele, apenas telefone ou protocolo (422). Busca por telefone ampla demais retorna 422 — informe mais dígitos. Com protocolo, os demais filtros são ignorados, inclusive `department_ids`; com telefone ou nome, os filtros se aplicam normalmente.",
                         "schema": {
                             "type": "string"
                         }
@@ -4026,7 +4133,7 @@
                     {
                         "name": "filters",
                         "in": "query",
-                        "description": "Estados da conversa, separados por vírgula: `opened`, `closed`, `pending`, `queue`, `has_customer_message`. O `pending` traz as conversas aguardando resposta: última mensagem do cliente ou conversa que acabou de chegar ao atendente e que ele ainda não respondeu. Só é aceito junto de `opened` (`opened,pending`); sozinho, retorna 422.",
+                        "description": "Estados da conversa, separados por vírgula: `opened`, `closed`, `pending`, `waiting`, `queue`, `has_customer_message`. O `pending` traz as conversas aguardando resposta: última mensagem do cliente ou conversa que acabou de chegar ao atendente e que ele ainda não respondeu. O `waiting` traz só as conversas com a última mensagem do cliente. Os dois só são aceitos junto de `opened` (`opened,pending` ou `opened,waiting`); sozinhos, retornam 422.",
                         "schema": {
                             "type": "string"
                         }
@@ -4090,7 +4197,7 @@
                     {
                         "name": "department_ids",
                         "in": "query",
-                        "description": "Departamentos (categorias), separados por vírgula: conversas cujo último departamento está na lista, do usuário bot ou do próprio usuário autenticado. Para gerentes com a restrição de visibilidade ativa, o servidor define o valor — inclusive na busca.",
+                        "description": "Departamentos (categorias), separados por vírgula: conversas cujo último departamento está na lista, do usuário bot ou do próprio usuário autenticado. Para gerentes com a restrição de visibilidade ativa, o servidor define o valor. A busca por protocolo ignora este filtro.",
                         "schema": {
                             "type": "string"
                         }
@@ -4150,14 +4257,6 @@
                         "description": "Conversas sem atividade há pelo menos N minutos.",
                         "schema": {
                             "type": "integer"
-                        }
-                    },
-                    {
-                        "name": "interaction_user_id",
-                        "in": "query",
-                        "description": "Conversas em que o usuário informado interagiu.",
-                        "schema": {
-                            "type": "string"
                         }
                     },
                     {
@@ -4228,6 +4327,42 @@
                         "name": "without_bot",
                         "in": "query",
                         "description": "Oculta as conversas do usuário bot (agente de IA); conversas na fila continuam.",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "interaction_user_id",
+                        "in": "query",
+                        "description": "Conversas fechadas em que o usuário informado participou.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "closed_by_user_id",
+                        "in": "query",
+                        "description": "Conversas fechadas pelo usuário informado. Com o id do usuário bot, entram também as que ninguém fechou (expiradas). Quando o id é de outro usuário (nem o bot, nem o autenticado), o `department_ids` considera só o departamento da conversa.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "period_by",
+                        "in": "query",
+                        "description": "Data usada pelo período (`start_period`/`end_period`) e pelas ordenações `newest-chat`/`oldest-chat`: `started_at` (abertura, padrão) ou `ended_at` (encerramento). Com `ended_at` e período, só entram conversas encerradas.",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "started_at",
+                                "ended_at"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "all_departments",
+                        "in": "query",
+                        "description": "Com `1`, o gerente com permissão de ver todos os departamentos (`can_view_all_departments`) não tem o `department_ids` definido pelo servidor. Sem a permissão, é ignorado.",
                         "schema": {
                             "type": "boolean"
                         }
@@ -4721,7 +4856,7 @@
                     {
                         "name": "search",
                         "in": "query",
-                        "description": "Busca por protocolo, por telefone (qualquer parte do número, mínimo 5 dígitos, com ou sem máscara) ou por início do nome do cliente (mínimo 5 caracteres). Nome só é aceito com `filters=opened`; fora dele, apenas telefone ou protocolo (422). Busca por telefone ampla demais retorna 422 — informe mais dígitos. Com protocolo, os demais filtros são ignorados; com telefone ou nome, os filtros se aplicam normalmente.",
+                        "description": "Busca por protocolo, por telefone (qualquer parte do número, mínimo 5 dígitos, com ou sem máscara) ou por início do nome do cliente (mínimo 5 caracteres). Nome só é aceito com `filters=opened`; fora dele, apenas telefone ou protocolo (422). Busca por telefone ampla demais retorna 422 — informe mais dígitos. Com protocolo, os demais filtros são ignorados, inclusive `department_ids`; com telefone ou nome, os filtros se aplicam normalmente.",
                         "schema": {
                             "type": "string"
                         }
@@ -4785,7 +4920,7 @@
                     {
                         "name": "department_ids",
                         "in": "query",
-                        "description": "Departamentos (categorias), separados por vírgula: conversas cujo último departamento está na lista, do usuário bot ou do próprio usuário autenticado. Para gerentes com a restrição de visibilidade ativa, o servidor define o valor — inclusive na busca.",
+                        "description": "Departamentos (categorias), separados por vírgula: conversas cujo último departamento está na lista, do usuário bot ou do próprio usuário autenticado. Para gerentes com a restrição de visibilidade ativa, o servidor define o valor. A busca por protocolo ignora este filtro.",
                         "schema": {
                             "type": "string"
                         }
@@ -4845,14 +4980,6 @@
                         "description": "Conversas sem atividade há pelo menos N minutos.",
                         "schema": {
                             "type": "integer"
-                        }
-                    },
-                    {
-                        "name": "interaction_user_id",
-                        "in": "query",
-                        "description": "Conversas em que o usuário informado interagiu.",
-                        "schema": {
-                            "type": "string"
                         }
                     },
                     {
@@ -6021,7 +6148,7 @@
             },
             "post": {
                 "operationId": "chatExport.store",
-                "description": "Só registra o pedido. O arquivo é gerado de madrugada, a partir de 01:00, um pedido por vez, e aparece pronto em `GET /chat-exports`. O resultado é um ZIP com 1 CSV por dia do período, com as conversas inteiras. O período vai até 60 dias e termina no máximo ontem. Os filtros são os mesmos da tela Relatórios: `user_id` (conversas em que o usuário interagiu), `category_id` (conversas que passaram pelo departamento), `assistant_id`, `sub_channel_id` (conta conectada) e `bot_only` (mesma regra do card de conversas só com IA). Só é aceito 1 pedido aberto (aguardando ou gerando) por tenant; com outro aberto, retorna 422.",
+                "description": "Só registra o pedido. O arquivo é gerado de madrugada, a partir de 01:00, um pedido por vez, e aparece pronto em `GET /chat-exports`. O resultado é um ZIP com 1 CSV por dia do período, com as conversas inteiras. O período vai até 60 dias e termina no máximo ontem. Os filtros são os mesmos da tela Relatórios: `user_id` (conversas fechadas em que o usuário participou), `category_id` (conversas que passaram pelo departamento), `assistant_id`, `sub_channel_id` (conta conectada) e `bot_only` (mesma regra do card de conversas só com IA). Só é aceito 1 pedido aberto (aguardando ou gerando) por tenant; com outro aberto, retorna 422.",
                 "summary": "Pedir exportação de conversas",
                 "tags": [
                     "Exportações"
@@ -8731,7 +8858,7 @@
         "/chats/message/order-details": {
             "post": {
                 "operationId": "messageTemplate.sendOrderDetails",
-                "description": "Envia uma mensagem de detalhes de pedido (order details) com código PIX (`code`), linha digitável do boleto (`digitable_line`) e link de pagamento (`payment_link`, URL https), juntos ou separados, na mesma mensagem. Informe ao menos um; com `code`, os campos `type`, `merchant_name` e `key` são obrigatórios. Informe `value` em centavos (`8990`) ou em reais com vírgula ou ponto (`89,90`, `89.90` ou `R$ 89,90`). Funciona em canais WhatsApp Official, WhatsApp Cloud, Website e App. Nos canais Website e App a mensagem chega ao widget pelo socket com `product_name`, `code` e `value` (centavos). Com `is_background=true`, o envio é enfileirado e responde 202.",
+                "description": "Envia uma mensagem de detalhes de pedido (order details) com código PIX (`code`), linha digitável do boleto (`digitable_line`) e link de pagamento (`payment_link`, URL https), juntos ou separados, na mesma mensagem. Informe ao menos um; com `code`, os campos `type`, `merchant_name` e `key` são obrigatórios. Informe `value` em centavos (`8990`) ou em reais com vírgula ou ponto (`89,90`, `89.90` ou `R$ 89,90`). Funciona em canais WhatsApp Official, WhatsApp Cloud, Website e App. Nos canais Website e App a mensagem chega ao widget pelo socket com `product_name`, `code` e `value` (centavos). Com `is_background=true`, o envio é enfileirado e responde 202. Se a Meta recusar os dados do card, o envio em fila manda o `text` e os códigos de pagamento em mensagens de texto.",
                 "summary": "Enviar detalhes de pedido",
                 "tags": [
                     "Mensagens"
@@ -9403,14 +9530,90 @@
         "/monitoring/board": {
             "get": {
                 "operationId": "monitoring.board",
-                "description": "Retorna, numa resposta só, o placar do board de monitoramento: os atendentes e departamentos visíveis ao papel do usuário e o `snapshot` com os números do tenant inteiro. Admin e support veem todos os atendentes e departamentos; gerente vê só os dos seus departamentos (gerente sem departamento recebe as duas listas vazias); atendente recebe `403`. `agents` traz todo usuário que pode atender, inclusive com zero conversas, sem desativados e de férias. O `snapshot` conta conversas abertas, arquivadas incluídas, e cada número é igual ao de `GET /chats/amount` com os filtros equivalentes: `ai` são as conversas com o agente de IA; `departments[id].human` e `.queue` são as conversas com atendente e na fila daquele departamento; `users[id][departamento].open` e `.waiting` são as conversas do atendente naquele departamento e, dessas, as que aguardam resposta do atendente. A chave `null` agrupa as conversas sem departamento. `generated_at` é o instante do cálculo; ao repetir a chamada, fique com a resposta mais nova.",
+                "description": "Retorna, numa resposta só, o placar do board de monitoramento: os atendentes e departamentos visíveis ao papel do usuário e o `snapshot` com os números do tenant inteiro. Admin e support veem todos os atendentes e departamentos; gerente vê só os dos seus departamentos (gerente sem departamento recebe as duas listas vazias); atendente recebe `403`. Gerente com permissão de ver todos os departamentos (`can_view_all_departments`) que envia `all_departments=1` vê como admin; `all_departments` na resposta diz se as listas cobrem todos os departamentos. `agents` traz todo usuário que pode atender, inclusive com zero conversas, sem desativados e de férias. O `snapshot` conta conversas abertas, arquivadas incluídas, e cada número é igual ao de `GET /chats/amount` com os filtros equivalentes: `ai` são as conversas com o agente de IA; `departments[id].human` e `.queue` são as conversas com atendente e na fila daquele departamento; `users[id][departamento].open` e `.waiting` são as conversas do atendente naquele departamento e, dessas, as que aguardam resposta do atendente. A chave `null` agrupa as conversas sem departamento. `generated_at` é o instante do cálculo; ao repetir a chamada, fique com a resposta mais nova. Os filtros `filters`, `channel`, `sub_channel_id`, `start_period` e `end_period` funcionam como em `GET /chats` e valem para os números. Com `filters=closed`, o `snapshot` conta as conversas fechadas no período, por quem fechou: `ai` são as fechadas pelo bot ou por ninguém (expiradas), `departments[id].human` são as fechadas por usuários, `queue` vem `0` e `users[id][departamento]` traz `closed` no lugar de `open` e `waiting`.",
                 "summary": "Consultar placar do monitoramento",
                 "tags": [
                     "Monitoramento"
                 ],
+                "parameters": [
+                    {
+                        "name": "filters",
+                        "in": "query",
+                        "description": "Conversas contadas: `opened` (abertas, padrão), `opened,pending` (abertas aguardando resposta), `opened,waiting` (abertas com a última mensagem do cliente) ou `closed` (fechadas no período).",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "enum": [
+                                "opened",
+                                "opened,pending",
+                                "opened,waiting",
+                                "closed"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "start_period",
+                        "in": "query",
+                        "description": "Início do período (`Y-m-d H:i`): pela abertura nas abertas e pelo encerramento em `closed`. Obrigatório em `closed`.",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "end_period",
+                        "in": "query",
+                        "description": "Fim do período (`Y-m-d H:i`). Obrigatório em `closed`, com até 7 dias depois do início (acima disso, 422).",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "channel",
+                        "in": "query",
+                        "description": "Canal da conversa (ex.: `WHATSAPP_OFFICIAL`, `INSTAGRAM`).",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "sub_channel_id",
+                        "in": "query",
+                        "description": "Conta conectada (subcanal).",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "all_departments",
+                        "in": "query",
+                        "description": "Com `1`, o gerente com permissão de ver todos os departamentos vê como admin. Sem a permissão, é ignorado.",
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    }
+                ],
                 "responses": {
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
                     },
                     "200": {
                         "description": "",
@@ -9503,7 +9706,7 @@
                                                 },
                                                 "ai": {
                                                     "type": "integer",
-                                                    "description": "Conversas abertas com o agente de IA."
+                                                    "description": "Conversas abertas com o agente de IA. Em `closed`, as fechadas pelo bot ou por ninguém."
                                                 },
                                                 "departments": {
                                                     "type": "object",
@@ -9511,7 +9714,7 @@
                                                 },
                                                 "users": {
                                                     "type": "object",
-                                                    "description": "Por id de atendente e, dentro, por id de departamento da conversa (`null` para conversas sem departamento). O agente de IA não entra."
+                                                    "description": "Por id de atendente (em `closed`, de quem fechou) e, dentro, por id de departamento da conversa (`null` para conversas sem departamento). O agente de IA não entra."
                                                 }
                                             },
                                             "required": [
@@ -9520,12 +9723,17 @@
                                                 "departments",
                                                 "users"
                                             ]
+                                        },
+                                        "all_departments": {
+                                            "type": "boolean",
+                                            "description": "`true` quando as listas cobrem todos os departamentos: admin, support ou gerente com a permissão que enviou `all_departments=1`."
                                         }
                                     },
                                     "required": [
                                         "agents",
                                         "departments",
-                                        "snapshot"
+                                        "snapshot",
+                                        "all_departments"
                                     ]
                                 }
                             }
@@ -9537,7 +9745,7 @@
         "/monitoring/recurrences": {
             "get": {
                 "operationId": "monitoring.recurrences",
-                "description": "Retorna os casos de recorrência do tenant: clientes que voltaram pelo mesmo motivo. Um caso é um cliente e um motivo. Ele é recorrente quando tem `quantity` (2) contatos sobre o mesmo motivo em 30 dias, em conversas começadas pelo cliente, olhando os últimos 120 dias. `min_contacts` mostra só os casos com essa quantidade de contatos ou mais e esconde os resolvidos sem contatos. `status=pending` devolve os casos sem tratativa nem descarte depois do último contato, na ordem de prioridade (`priority`): 1, quem falou em cancelar ou em Procon; 2, os insatisfeitos ou irritados; 3, os demais; em cada uma, do contato mais recente para o mais antigo. `risk=1` traz só os casos de prioridade 1 e `risk=0` só os demais; como `reason`, vale para a lista, o `total` e os `counts`, e não muda `reasons`. Por padrão, os pendentes cujo último contato terminou satisfeito ou muito satisfeito ficam de fora; `include_satisfied=1` traz esses casos. `status=resolved` devolve os casos tratados ou descartados, da ação mais recente para a mais antiga. O período filtra os pendentes pelo último contato e os resolvidos pela data da ação; com `search` (telefone do cliente ou protocolo de uma conversa dele), a lista traz só os casos desse cliente, sem olhar o período. A lista vem em páginas de 30. Atendente recebe `403`; gerente só vê casos com algum contato dos seus departamentos, de um grupo dos seus departamentos (conversa só com IA) ou sem departamento.",
+                "description": "Retorna os casos de recorrência do tenant: clientes que voltaram pelo mesmo motivo. Um caso é um cliente e um motivo. Ele é recorrente quando tem `quantity` (2) contatos sobre o mesmo motivo em 30 dias, em conversas começadas pelo cliente, olhando os últimos 120 dias. `min_contacts` mostra só os casos com essa quantidade de contatos ou mais e esconde os resolvidos sem contatos. `status=pending` devolve os casos sem tratativa nem descarte depois do último contato, na ordem de prioridade (`priority`): 1, quem falou em cancelar ou em Procon; 2, os insatisfeitos ou irritados; 3, os demais; em cada uma, do contato mais recente para o mais antigo. `risk=1` traz só os casos de prioridade 1 e `risk=0` só os demais; como `reason`, vale para a lista, o `total` e os `counts`, e não muda `reasons`. Por padrão, os pendentes cujo último contato terminou satisfeito ou muito satisfeito ficam de fora; `include_satisfied=1` traz esses casos. `status=resolved` devolve os casos tratados ou descartados, da ação mais recente para a mais antiga. O período (`start_period` e `end_period` ou, sem eles, `period`) filtra os pendentes por algum contato dentro dele e os resolvidos pela data da ação; com `search` (telefone do cliente ou protocolo de uma conversa dele), a lista traz só os casos desse cliente, sem olhar o período. A lista vem em páginas de 30. Atendente recebe `403`; gerente só vê casos com algum contato dos seus departamentos, de um grupo dos seus departamentos (conversa só com IA) ou sem departamento. Gerente com permissão de ver todos os departamentos (`can_view_all_departments`) que envia `all_departments=1` vê como admin.",
                 "summary": "Listar clientes recorrentes",
                 "tags": [
                     "Monitoramento"
@@ -9561,7 +9769,7 @@
                     {
                         "name": "period",
                         "in": "query",
-                        "description": "Período em dias. Padrão 7.",
+                        "description": "Período em dias, até agora. Padrão 7. Ignorado quando vêm `start_period` e `end_period`.",
                         "schema": {
                             "type": [
                                 "string",
@@ -9571,6 +9779,28 @@
                                 "7",
                                 "30",
                                 "90"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "start_period",
+                        "in": "query",
+                        "description": "Início do período, no formato `Y-m-d H:i`, nos últimos 90 dias. Vai junto com `end_period`.",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "end_period",
+                        "in": "query",
+                        "description": "Fim do período, no formato `Y-m-d H:i`, igual ou depois de `start_period`. O minuto do fim entra inteiro. Vai junto com `start_period`.",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
                             ]
                         }
                     },
@@ -9656,6 +9886,17 @@
                                 "null"
                             ],
                             "maxLength": 50
+                        }
+                    },
+                    {
+                        "name": "all_departments",
+                        "in": "query",
+                        "description": "Com `1`, o gerente com permissão de ver todos os departamentos vê como admin. Sem a permissão, é ignorado.",
+                        "schema": {
+                            "type": [
+                                "boolean",
+                                "null"
+                            ]
                         }
                     }
                 ],
@@ -10022,7 +10263,7 @@
         "/monitoring/recurrences/treat": {
             "post": {
                 "operationId": "monitoring.recurrences.treat",
-                "description": "Registra a tratativa de um caso pendente, com a observação do que foi feito. O caso sai dos pendentes e volta sozinho se o cliente chamar de novo pelo mesmo motivo. Caso que não está nos pendentes de quem chama recebe `422`; atendente recebe `403`.",
+                "description": "Registra a tratativa de um caso pendente, com a observação do que foi feito. O caso sai dos pendentes e volta sozinho se o cliente chamar de novo pelo mesmo motivo. Caso que não está nos pendentes de quem chama recebe `422`; atendente recebe `403`. Gerente com permissão de ver todos os departamentos (`can_view_all_departments`) age em casos de qualquer departamento.",
                 "summary": "Tratar caso recorrente",
                 "tags": [
                     "Monitoramento"
@@ -10053,7 +10294,7 @@
         "/monitoring/recurrences/discard": {
             "post": {
                 "operationId": "monitoring.recurrences.discard",
-                "description": "Tira de 1 a 50 casos pendentes da lista sem tratar, com uma observação opcional que vale para todos. Se algum caso não estiver nos pendentes de quem chama, nada é gravado e a resposta é `422`. Atendente recebe `403`.",
+                "description": "Tira de 1 a 50 casos pendentes da lista sem tratar, com uma observação opcional que vale para todos. Se algum caso não estiver nos pendentes de quem chama, nada é gravado e a resposta é `422`. Atendente recebe `403`. Gerente com permissão de ver todos os departamentos (`can_view_all_departments`) age em casos de qualquer departamento.",
                 "summary": "Descartar casos recorrentes",
                 "tags": [
                     "Monitoramento"
@@ -10084,7 +10325,7 @@
         "/monitoring/recurrences/undo/{id}": {
             "delete": {
                 "operationId": "monitoring.recurrences.undo",
-                "description": "Apaga a ação mais recente de um caso, e o caso passa a seguir a ação anterior, se houver. Ação que não é a mais recente do caso recebe `422`; atendente e gerente que não vê o caso recebem `403`.",
+                "description": "Apaga a ação mais recente de um caso, e o caso passa a seguir a ação anterior, se houver. Ação que não é a mais recente do caso recebe `422`; atendente e gerente que não vê o caso recebem `403`. Gerente com permissão de ver todos os departamentos (`can_view_all_departments`) age em casos de qualquer departamento.",
                 "summary": "Desfazer tratativa ou descarte",
                 "tags": [
                     "Monitoramento"
@@ -11490,7 +11731,7 @@
         "/analytics/chat/response-time": {
             "get": {
                 "operationId": "analytics.chat.response-time",
-                "description": "Retorna a média de tempo de resposta em segundos no período.",
+                "description": "Retorna a média de tempo de resposta em segundos das conversas fechadas no período, pela data de fechamento.",
                 "summary": "Consultar tempo médio de resposta",
                 "tags": [
                     "Métricas de conversas"
@@ -11921,7 +12162,7 @@
         "/analytics/chat/bot-percentage": {
             "get": {
                 "operationId": "analytics.chat.bot-percentage",
-                "description": "Retorna o percentual de conversas parcialmente atendidas pelo bot no período.",
+                "description": "Retorna o percentual das respostas dadas pelo bot nas conversas fechadas no período, pela data de fechamento, em que houve outro participante.",
                 "summary": "Consultar percentual de atendimento do bot",
                 "tags": [
                     "Métricas de conversas"
@@ -12397,7 +12638,7 @@
         "/analytics/chat/first-contact-resolution": {
             "get": {
                 "operationId": "analytics.chat.first-contact-resolution",
-                "description": "Retorna, por atendente, o total de conversas fechadas com motivo no período, quantas tiveram o cliente retornando com o mesmo motivo dentro da janela de recontato e o percentual de resolução no primeiro contato. Exige `start_period` e `end_period` (máximo de 90 dias).",
+                "description": "Retorna, por atendente, o total de conversas fechadas com motivo no período em que ele participou, quantas tiveram o cliente retornando com o mesmo motivo dentro da janela de recontato e o percentual de resolução no primeiro contato. Cada conversa conta para todos que participaram dela. Exige `start_period` e `end_period` (máximo de 90 dias).",
                 "summary": "Consultar taxa de resolução no primeiro contato",
                 "tags": [
                     "Métricas de conversas"
@@ -12406,7 +12647,7 @@
                     {
                         "name": "start_period",
                         "in": "query",
-                        "description": "Início do período (`Y-m-d H:i`).",
+                        "description": "Início do período (`Y-m-d H:i`), pelo fechamento da conversa.",
                         "schema": {
                             "type": [
                                 "string",
@@ -12861,6 +13102,156 @@
                                         "customer",
                                         "company",
                                         "chats"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/analytics/chat/user-ranking": {
+            "get": {
+                "operationId": "analytics.chat.user-ranking",
+                "description": "Retorna os atendentes das conversas fechadas no período, com a pontuação de 0 a 100: resolução no primeiro contato (peso 30), satisfação (25), nota da IA (20), tempo médio de resposta (15) e tempo médio de atendimento em horário comercial (10). Satisfação (notas 9 e 10) e resolução no primeiro contato contam para todos que participaram da conversa. Os tempos são comparados com a mediana dos atendentes do resultado. Métrica sem dado sai da conta; com menos de 3 métricas, `score` vem nulo. Quem tem menos conversas que `minimum_conversations` vem no fim, com `below_minimum`. Exige `start_period` e `end_period` (máximo de 60 dias).",
+                "summary": "Consultar ranking de atendentes",
+                "tags": [
+                    "Métricas de conversas"
+                ],
+                "parameters": [
+                    {
+                        "name": "start_period",
+                        "in": "query",
+                        "description": "Início do período (`Y-m-d H:i`), pelo fechamento da conversa.",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "end_period",
+                        "in": "query",
+                        "description": "Fim do período (`Y-m-d H:i`).",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category_ids[]",
+                        "in": "query",
+                        "description": "Só atendentes de algum desses departamentos; as medianas e o mínimo de conversas saem só entre eles.",
+                        "schema": {
+                            "type": "array",
+                            "format": "uuid",
+                            "items": {
+                                "type": "string",
+                                "format": "uuid"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "minimum_conversations": {
+                                            "type": "integer",
+                                            "description": "O maior entre 5 e 20% da mediana de conversas dos atendentes, arredondado para cima; 0 quando não há atendentes."
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "user_id": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "conversations": {
+                                                        "type": "integer",
+                                                        "description": "Conversas fechadas no período em que o atendente participou."
+                                                    },
+                                                    "first_contact_resolution": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "description": "Percentual de resolução no primeiro contato."
+                                                    },
+                                                    "satisfaction": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "description": "Percentual de notas 9 e 10."
+                                                    },
+                                                    "ai_score": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "description": "Média da nota geral da IA, de 0 a 10."
+                                                    },
+                                                    "average_response_time": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "description": "Em segundos."
+                                                    },
+                                                    "average_service_time": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "description": "Em segundos, em horário comercial."
+                                                    },
+                                                    "score": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "description": "Pontuação de 0 a 100."
+                                                    },
+                                                    "below_minimum": {
+                                                        "type": "boolean"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "user_id",
+                                                    "name",
+                                                    "conversations",
+                                                    "first_contact_resolution",
+                                                    "satisfaction",
+                                                    "ai_score",
+                                                    "average_response_time",
+                                                    "average_service_time",
+                                                    "score",
+                                                    "below_minimum"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "minimum_conversations",
+                                        "data"
                                     ]
                                 }
                             }
@@ -13592,7 +13983,7 @@
         "/notifier/retry/{notifierId}": {
             "post": {
                 "operationId": "notifier.retry",
-                "description": "Reexecuta a busca de um notificador do motor interno habilitado (outros retornam 422), com `days_offset` opcional substituindo o configurado. Ao fim da busca, todas as pendências do notificador são enviadas imediatamente, respeitando `dispatch_days`; pendências já existentes para o mesmo telefone não são substituídas. Limite de 2 reprocessamentos por dia por notificador (400).",
+                "description": "Reexecuta a busca de um notificador do motor interno habilitado (outros retornam 422), com `days_offset` opcional substituindo o configurado. A busca só preenche os disparos pendentes, sem enviar: eles saem em `POST /notifier/dispatches/send/{notifierId}` ou no próximo `dispatch_at`. Pendências já existentes para o mesmo telefone não são substituídas. Com uma busca em andamento, retorna 409. Limite de 2 reprocessamentos por dia por notificador (400).",
                 "summary": "Reprocessar busca do notificador",
                 "tags": [
                     "Notificadores"
@@ -13678,12 +14069,38 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "operationId": "notifier.deleteDispatches",
+                "description": "Apaga todos os disparos pendentes do notificador; ninguém da lista recebe a mensagem. Com uma busca em andamento, retorna 409.",
+                "summary": "Limpar disparos pendentes",
+                "tags": [
+                    "Notificadores"
+                ],
+                "parameters": [
+                    {
+                        "name": "notifierId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
             }
         },
         "/notifier/dispatches/count/{notifierId}": {
             "get": {
                 "operationId": "notifier.dispatchesCount",
-                "description": "Retorna a quantidade de disparos pendentes pela fonte do dono do registro: banco da plataforma para o motor interno, serviço externo para os demais.",
+                "description": "Retorna a quantidade de disparos pendentes pela fonte do dono do registro: banco da plataforma para o motor interno, serviço externo para os demais. No motor interno, `is_fetching` indica se há uma busca em andamento.",
                 "summary": "Contar disparos do notificador",
                 "tags": [
                     "Notificadores"
@@ -13709,6 +14126,49 @@
                                 "schema": {
                                     "type": "object",
                                     "description": "Resposta repassada diretamente do serviço de notificações. Em caso de falha de comunicação, retorna 502 com `{\"message\": \"Erro ao comunicar com o Notifier.\"}`."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/notifier/dispatches/send/{notifierId}": {
+            "post": {
+                "operationId": "notifier.sendDispatches",
+                "description": "Envia agora os disparos pendentes de um notificador do motor interno habilitado (outros retornam 422), mesmo fora de `dispatch_days`, em lotes de 100 a cada 30 segundos. Com uma busca em andamento, retorna 409.",
+                "summary": "Enviar disparos pendentes agora",
+                "tags": [
+                    "Notificadores"
+                ],
+                "parameters": [
+                    {
+                        "name": "notifierId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "message"
+                                    ]
                                 }
                             }
                         }
@@ -13927,7 +14387,7 @@
             },
             "post": {
                 "operationId": "call-numbers.store",
-                "description": "Vincula um número de voz conforme o provider da conta: na Twilio e na Telnyx verifica o número no provider e configura o roteamento de chamadas; no `direct` apenas registra o DID informado (formato E.164). Sem `call_account_id`, cria o tronco `direct` junto com o número numa única operação: `sip_host`, `sip_port` (padrão 5060), `sip_username` (só o usuário, sem `@host` nem espaços) e `sip_password` viram uma conta de voz nova, materializada no Asterisk — se qualquer etapa falhar, nada é criado. O campo `direct_to_queue` (exige exatamente um departamento) faz a chamada entrar direto na fila, sem saudação. O campo `office_hours_only` faz a chamada fora do expediente do departamento (ou feriado) ir direto ao recado com o aviso de fechado. O campo `ring_all` toca em todos os atendentes disponíveis do departamento de uma vez: o primeiro que atende fica com a chamada, as outras pernas caem e quem não atendeu não recebe cooldown; desligado, a chamada é oferecida a um atendente por vez.",
+                "description": "Vincula um número de voz conforme o provider da conta: na Twilio verifica o número no provider e configura o roteamento de chamadas; no `direct` apenas registra o DID informado (formato E.164). Sem `call_account_id`, cria o tronco `direct` junto com o número numa única operação: `sip_host`, `sip_port` (padrão 5060), `sip_username` (só o usuário, sem `@host` nem espaços) e `sip_password` viram uma conta de voz nova, materializada no Asterisk — se qualquer etapa falhar, nada é criado. O campo `direct_to_queue` (exige exatamente um departamento) faz a chamada entrar direto na fila, sem saudação. O campo `office_hours_only` faz a chamada fora do expediente do departamento (ou feriado) ir direto ao recado com o aviso de fechado. O campo `ring_all` toca em todos os atendentes disponíveis do departamento de uma vez: o primeiro que atende fica com a chamada, as outras pernas caem e quem não atendeu não recebe cooldown; desligado, a chamada é oferecida a um atendente por vez. O campo `default_department_id` (opcional; qualquer departamento do tenant) define a fila que recebe a chamada quando o cliente não escolhe nenhuma opção do menu da URA `direct`; sem ele, a chamada vai para o recado.",
                 "summary": "Vincular número",
                 "tags": [
                     "Números de telefone"
@@ -13965,7 +14425,7 @@
         "/call-numbers/{id}": {
             "put": {
                 "operationId": "call-numbers.update",
-                "description": "Atualiza os departamentos (1 a 9 somando as opções do menu; a ordem define o dígito no menu da URA), `direct_to_queue` (exige exatamente um departamento no estado final), `office_hours_only` e `ring_all` do número. O DID não é editável. Em números `direct`, as falas não customizadas da URA são regeradas; na Twilio, o Studio Flow é republicado.",
+                "description": "Atualiza os departamentos (1 a 9 somando as opções do menu; a ordem define o dígito no menu da URA), `direct_to_queue` (exige exatamente um departamento no estado final), `office_hours_only`, `ring_all` e `default_department_id` (`null` remove; ausente mantém) do número. O DID não é editável. Em números `direct`, as falas não customizadas da URA são regeradas; na Twilio, o Studio Flow é republicado.",
                 "summary": "Atualizar número",
                 "tags": [
                     "Números de telefone"
@@ -14152,79 +14612,10 @@
                 }
             }
         },
-        "/call-numbers/telnyx/{callAccountId}": {
-            "get": {
-                "operationId": "callNumber.telnyx",
-                "description": "Consulta os números de telefone existentes na conta Telnyx informada.",
-                "summary": "Listar números disponíveis na Telnyx",
-                "tags": [
-                    "Números de telefone"
-                ],
-                "parameters": [
-                    {
-                        "name": "callAccountId",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "search",
-                        "in": "query",
-                        "description": "Busca pelo número.",
-                        "schema": {
-                            "type": [
-                                "string",
-                                "null"
-                            ]
-                        }
-                    },
-                    {
-                        "name": "available",
-                        "in": "query",
-                        "description": "Somente números ainda não vinculados.",
-                        "schema": {
-                            "type": [
-                                "string",
-                                "null"
-                            ],
-                            "enum": [
-                                "0",
-                                "1",
-                                "true",
-                                "false"
-                            ]
-                        }
-                    }
-                ],
-                "responses": {
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    },
-                    "422": {
-                        "$ref": "#/components/responses/ValidationException"
-                    },
-                    "200": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/TelnyxNumberData"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/call-numbers/audio/{callNumberId}": {
             "get": {
                 "operationId": "callNumber.audio",
-                "description": "Retorna os clipes de áudio da URA (saudação, menu, voicemail, fechado, os avisos por departamento e as opções do menu) do número, com o texto editável, se está customizado, o status de geração e uma URL temporária de pré-escuta. Avisos (`type` = `notice`) trazem `department_id`, `active` e `end_call`. Opções do menu (`type` = `option`) trazem `menu_option_id`, o id da opção em `menu_options` do número. Números Twilio/Telnyx têm apenas o clipe `closed`, falado por síntese em tempo real (sem áudio gerado).",
+                "description": "Retorna os clipes de áudio da URA (saudação, menu, voicemail, fechado, os avisos por departamento e as opções do menu) do número, com o texto editável, se está customizado, o status de geração e uma URL temporária de pré-escuta. Avisos (`type` = `notice`) trazem `department_id`, `active` e `end_call`. Opções do menu (`type` = `option`) trazem `menu_option_id`, o id da opção em `menu_options` do número. Números Twilio têm apenas o clipe `closed`, falado por síntese em tempo real (sem áudio gerado).",
                 "summary": "Listar áudios da URA",
                 "tags": [
                     "Números de telefone"
@@ -15162,6 +15553,7 @@
             },
             "put": {
                 "operationId": "users.update",
+                "description": "Atualiza os dados do usuário. `can_view_all_departments` (o gerente vê todos os departamentos no monitoramento) só é gravado quando quem edita é admin ou support; para os demais papéis, o campo é ignorado.",
                 "summary": "Atualizar usuário",
                 "tags": [
                     "Usuários"
@@ -18290,6 +18682,9 @@
                     "can_access_ai_chats": {
                         "type": "string"
                     },
+                    "can_view_all_departments": {
+                        "type": "string"
+                    },
                     "voice_enabled": {
                         "type": "boolean"
                     }
@@ -18310,6 +18705,7 @@
                     "category_ids",
                     "bot_user_id",
                     "can_access_ai_chats",
+                    "can_view_all_departments",
                     "voice_enabled"
                 ],
                 "title": "AuthMeResource"
@@ -18708,6 +19104,9 @@
                             "type": "string"
                         }
                     },
+                    "default_department_id": {
+                        "type": "string"
+                    },
                     "direct_to_queue": {
                         "type": "boolean"
                     },
@@ -18730,7 +19129,6 @@
                 "type": "string",
                 "enum": [
                     "twilio",
-                    "telnyx",
                     "direct"
                 ],
                 "title": "CallProviderEnum"
@@ -19285,6 +19683,9 @@
                         "type": "string",
                         "format": "date-time"
                     },
+                    "closed_by": {
+                        "$ref": "#/components/schemas/UserData"
+                    },
                     "is_archived": {
                         "type": "boolean"
                     },
@@ -19418,7 +19819,6 @@
                         "type": "string",
                         "enum": [
                             "twilio",
-                            "telnyx",
                             "direct"
                         ]
                     },
@@ -19461,6 +19861,13 @@
                     },
                     "ring_all": {
                         "type": "boolean"
+                    },
+                    "default_department_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uuid"
                     },
                     "sip_host": {
                         "type": "string"
@@ -21603,6 +22010,9 @@
                     },
                     "chat": {
                         "$ref": "#/components/schemas/IncomingCallChatData"
+                    },
+                    "transfer_note": {
+                        "type": "string"
                     }
                 },
                 "required": [
@@ -24141,22 +24551,6 @@
                 },
                 "title": "TelegramBotData"
             },
-            "TelnyxNumberData": {
-                "type": "object",
-                "properties": {
-                    "number": {
-                        "type": "string"
-                    },
-                    "friendly_name": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "number",
-                    "friendly_name"
-                ],
-                "title": "TelnyxNumberData"
-            },
             "TemplateHeaderResourceData": {
                 "type": "object",
                 "properties": {
@@ -24286,6 +24680,12 @@
                     "user_id": {
                         "type": "string",
                         "format": "uuid"
+                    },
+                    "note": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 },
                 "required": [
@@ -24555,6 +24955,13 @@
                     },
                     "ring_all": {
                         "type": "boolean"
+                    },
+                    "default_department_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uuid"
                     },
                     "departments": {
                         "type": "array",
@@ -25450,6 +25857,9 @@
                     "can_access_ai_chats": {
                         "type": "boolean"
                     },
+                    "can_view_all_departments": {
+                        "type": "boolean"
+                    },
                     "is_dark_mode": {
                         "type": "boolean"
                     },
@@ -25843,6 +26253,15 @@
                     },
                     "can_access_ai_chats": {
                         "type": "string"
+                    },
+                    "can_view_all_departments": {
+                        "type": "string"
+                    },
+                    "overtime_until": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 },
                 "required": [
@@ -25866,7 +26285,9 @@
                     "distribution_weight",
                     "max_archived_chats",
                     "online_requirement",
-                    "can_access_ai_chats"
+                    "can_access_ai_chats",
+                    "can_view_all_departments",
+                    "overtime_until"
                 ],
                 "title": "UserResource"
             },
