@@ -3447,7 +3447,7 @@
         "/calls/dial": {
             "post": {
                 "operationId": "call.dial",
-                "description": "Inicia uma chamada de saída em contas `direct`: cria a chamada, liga a perna SIP do agente autenticado (atendida automaticamente pelo softphone) e conecta ao número de destino com o caller ID do número informado. Retorna o `call_id` para correlação no softphone. Em contas `direct` a perna do cliente sai pelo tronco da operadora do tenant e o destino é validado antes de discar: só passam os prefixos liberados (Brasil por padrão) e os prefixos tarifados `0300`, `0500` e `0900` são bloqueados (422); o tenant também é limitado a 20 discagens por minuto (429). Números de contas Twilio são recusados.",
+                "description": "Inicia uma chamada de saída em contas `direct`: cria a chamada, liga a perna SIP do agente autenticado (atendida automaticamente pelo softphone) e conecta ao número de destino com o caller ID do número informado. Retorna o `call_id` para correlação no softphone. Em contas `direct` a perna do cliente sai pelo tronco da operadora do tenant e o destino é validado antes de discar: só passam os prefixos liberados (Brasil por padrão) e os prefixos tarifados `0300`, `0500` e `0900` são bloqueados (422); o tenant também é limitado a 20 discagens por minuto (429). Números de contas Twilio e números do WhatsApp são recusados.",
                 "summary": "Discar para um cliente (click-to-call)",
                 "tags": [
                     "Chamadas"
@@ -4005,7 +4005,7 @@
             },
             "post": {
                 "operationId": "call-accounts.store",
-                "description": "Cria a conta de voz no provider escolhido (`provider`: `twilio` ou `direct`; padrão `twilio`), valida as credenciais e provisiona os recursos remotos. Twilio: `account_sid`, `api_key_sid`, `api_key_secret`, `auth_token`. Direct (tronco SIP): `sip_host`, `sip_port` (padrão 5060), `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (nunca retornada nas leituras); `trunk_status` e `trunk_registration` são reavaliados cerca de 30 segundos depois.",
+                "description": "Cria a conta de voz no provider escolhido (`provider`: `twilio` ou `direct`; padrão `twilio`), valida as credenciais e provisiona os recursos remotos. Twilio: `account_sid`, `api_key_sid`, `api_key_secret`, `auth_token`. Direct (tronco SIP): `sip_host`, `sip_port` (padrão 5060), `sip_proxy` (opcional; IP do proxy, quando a operadora exige), `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (nunca retornada nas leituras); `trunk_status` e `trunk_registration` são reavaliados cerca de 30 segundos depois.",
                 "summary": "Criar conta de voz",
                 "tags": [
                     "Contas de voz"
@@ -4043,7 +4043,7 @@
         "/call-accounts/{id}": {
             "put": {
                 "operationId": "call-accounts.update",
-                "description": "Atualiza as credenciais conforme o provider da conta. Twilio: `api_key_sid`, `api_key_secret`, `auth_token`. Direct (tronco SIP): `sip_host`, `sip_port`, `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (opcional; ausente mantém a atual); `trunk_status` e `trunk_registration` são zerados e reavaliados cerca de 30 segundos depois.",
+                "description": "Atualiza as credenciais conforme o provider da conta. Twilio: `api_key_sid`, `api_key_secret`, `auth_token`. Direct (tronco SIP): `sip_host`, `sip_port`, `sip_proxy` (opcional; ausente remove o proxy), `sip_username` (só o usuário, sem `@host` nem espaços), `sip_password` (opcional; ausente mantém a atual); `trunk_status` e `trunk_registration` são zerados e reavaliados cerca de 30 segundos depois.",
                 "summary": "Atualizar conta de voz",
                 "tags": [
                     "Contas de voz"
@@ -6148,7 +6148,7 @@
             },
             "post": {
                 "operationId": "chatExport.store",
-                "description": "Só registra o pedido. O arquivo é gerado de madrugada, a partir de 01:00, um pedido por vez, e aparece pronto em `GET /chat-exports`. O resultado é um ZIP com 1 CSV por dia do período, com as conversas inteiras. O período vai até 60 dias e termina no máximo ontem. Os filtros são os mesmos da tela Relatórios: `user_id` (conversas fechadas em que o usuário participou), `category_id` (conversas que passaram pelo departamento), `assistant_id`, `sub_channel_id` (conta conectada) e `bot_only` (mesma regra do card de conversas só com IA). Só é aceito 1 pedido aberto (aguardando ou gerando) por tenant; com outro aberto, retorna 422.",
+                "description": "Só registra o pedido. O arquivo é gerado de madrugada, a partir de 01:00, um pedido por vez, e aparece pronto em `GET /chat-exports`. O resultado é um ZIP com 1 CSV por dia do período, com as conversas inteiras. O período vai até 60 dias e termina no máximo ontem. Os filtros são os mesmos da tela Relatórios: `user_id` (conversas fechadas em que o usuário participou), `category_id` (conversas que passaram pelo departamento), `assistant_id`, `sub_channel_id` (conta conectada) e `bot_only` (só conversas sem humano, mesma regra do card Sem humano). Só é aceito 1 pedido aberto (aguardando ou gerando) por tenant; com outro aberto, retorna 422.",
                 "summary": "Pedir exportação de conversas",
                 "tags": [
                     "Exportações"
@@ -12019,8 +12019,8 @@
         "/analytics/chat/bot-completed": {
             "get": {
                 "operationId": "analytics.chat.bot-completed",
-                "description": "Retorna a quantidade de conversas atendidas exclusivamente pelo bot no período.",
-                "summary": "Contar conversas resolvidas pelo bot",
+                "description": "Retorna quantas conversas iniciadas no período, pelo cliente ou pela empresa, não tiveram atendente humano, só o usuário bot (IA e automações). Inclui envio automático sem resposta do cliente. Conversas sem mensagem ficam de fora.",
+                "summary": "Contar conversas sem humano",
                 "tags": [
                     "Métricas de conversas"
                 ],
@@ -12295,6 +12295,150 @@
                             "application/json": {
                                 "schema": {
                                     "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/analytics/chat/bot-share": {
+            "get": {
+                "operationId": "analytics.chat.bot-share",
+                "description": "Retorna, de 0 a 100, quanto do atendimento das conversas iniciadas no período foi feito pelo usuário bot (IA e automações). Cada conversa recebe uma nota: sem humano vale 100; com atendente, vale a parte das respostas dadas pelo usuário bot, calculada quando a conversa fecha (antes disso, 0); só com humano vale 0. O valor é a média das notas. Conversas sem mensagem ficam de fora.",
+                "summary": "Consultar participação de IA e automação",
+                "tags": [
+                    "Métricas de conversas"
+                ],
+                "parameters": [
+                    {
+                        "name": "start_period",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "end_period",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "user_id",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "is_exclude_bot",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "boolean",
+                                "null"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category_id",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "assistant_id",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "sub_channel_id",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "window",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 1,
+                            "maximum": 365
+                        }
+                    },
+                    {
+                        "name": "granularity",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "enum": [
+                                "day",
+                                "hour"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "export",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "enum": [
+                                "csv"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "integer",
+                                    "description": "Percentual de 0 a 100."
                                 }
                             }
                         }
@@ -14387,7 +14531,7 @@
             },
             "post": {
                 "operationId": "call-numbers.store",
-                "description": "Vincula um número de voz conforme o provider da conta: na Twilio verifica o número no provider e configura o roteamento de chamadas; no `direct` apenas registra o DID informado (formato E.164). Sem `call_account_id`, cria o tronco `direct` junto com o número numa única operação: `sip_host`, `sip_port` (padrão 5060), `sip_username` (só o usuário, sem `@host` nem espaços) e `sip_password` viram uma conta de voz nova, materializada no Asterisk — se qualquer etapa falhar, nada é criado. O campo `direct_to_queue` (exige exatamente um departamento) faz a chamada entrar direto na fila, sem saudação. O campo `office_hours_only` faz a chamada fora do expediente do departamento (ou feriado) ir direto ao recado com o aviso de fechado. O campo `ring_all` toca em todos os atendentes disponíveis do departamento de uma vez: o primeiro que atende fica com a chamada, as outras pernas caem e quem não atendeu não recebe cooldown; desligado, a chamada é oferecida a um atendente por vez. O campo `default_department_id` (opcional; qualquer departamento do tenant) define a fila que recebe a chamada quando o cliente não escolhe nenhuma opção do menu da URA `direct`; sem ele, a chamada vai para o recado.",
+                "description": "Vincula um número de voz conforme o provider da conta: na Twilio verifica o número no provider e configura o roteamento de chamadas; no `direct` apenas registra o DID informado (formato E.164). Sem `call_account_id`, cria o tronco `direct` junto com o número numa única operação: `sip_host`, `sip_port` (padrão 5060), `sip_proxy` (opcional; IP do proxy, quando a operadora exige), `sip_username` (só o usuário, sem `@host` nem espaços) e `sip_password` viram uma conta de voz nova, materializada no Asterisk — se qualquer etapa falhar, nada é criado. Com `whatsapp_cloud_id` ou `whatsapp_official_id` (no lugar de `call_account_id` e dos campos SIP), o número recebe as ligações do WhatsApp daquele canal: a ligação é ativada na Meta e uma conta de voz sem tronco é criada junto; se a Meta recusar, nada é criado (422 quando o limite do número é menor que 2.000 conversas por dia). Cada canal aceita um só número, e esse número não faz ligações. O campo `direct_to_queue` (exige exatamente um departamento) faz a chamada entrar direto na fila, sem saudação. O campo `office_hours_only` faz a chamada fora do expediente do departamento (ou feriado) ir direto ao recado com o aviso de fechado. O campo `ring_all` toca em todos os atendentes disponíveis do departamento de uma vez: o primeiro que atende fica com a chamada, as outras pernas caem e quem não atendeu não recebe cooldown; desligado, a chamada é oferecida a um atendente por vez. O campo `default_department_id` (opcional; qualquer departamento do tenant) define a fila que recebe a chamada quando o cliente não escolhe nenhuma opção do menu da URA `direct`; sem ele, a chamada vai para o recado.",
                 "summary": "Vincular número",
                 "tags": [
                     "Números de telefone"
@@ -14470,7 +14614,7 @@
             },
             "delete": {
                 "operationId": "call-numbers.destroy",
-                "description": "Remove o número e as falas da URA. Em números `direct`, se a conta de voz não tiver outros números, o tronco é removido do Asterisk e a conta é excluída junto.",
+                "description": "Remove o número e as falas da URA. Em números `direct`, se a conta de voz não tiver outros números, o tronco é removido do Asterisk e a conta é excluída junto. Em números do WhatsApp, a ligação também é desativada na Meta; uma falha na Meta não impede a remoção.",
                 "summary": "Remover número",
                 "tags": [
                     "Números de telefone"
@@ -14997,6 +15141,17 @@
                         "description": "Somente templates dos departamentos do usuário (ou sem departamento). Administrador e suporte recebem todos.",
                         "schema": {
                             "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "orderby",
+                        "in": "query",
+                        "description": "Ordenação (padrão: mais recentes). `name` ordena pelo nome, de A a Z.",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "name"
+                            ]
                         }
                     },
                     {
@@ -16617,6 +16772,7 @@
             },
             "delete": {
                 "operationId": "whatsapp-cloud.destroy",
+                "description": "Remove o canal. Retorna 422 se o canal tiver conversas ativas ou um número de ligação vinculado (`POST /call-numbers` com `whatsapp_cloud_id`).",
                 "summary": "Remover canal WhatsApp Cloud",
                 "tags": [
                     "WhatsApp Cloud"
@@ -16850,6 +17006,7 @@
             },
             "delete": {
                 "operationId": "whatsapp-official.destroy",
+                "description": "Remove o canal. Retorna 422 se o canal tiver conversas ativas ou um número de ligação vinculado (`POST /call-numbers` com `whatsapp_official_id`).",
                 "summary": "Remover canal WhatsApp Official",
                 "tags": [
                     "WhatsApp Official"
@@ -18878,6 +19035,9 @@
                     "sip_username": {
                         "type": "string"
                     },
+                    "sip_proxy": {
+                        "type": "string"
+                    },
                     "trunk_status": {
                         "type": [
                             "string",
@@ -19459,12 +19619,6 @@
                     "assistant": {
                         "$ref": "#/components/schemas/AssistantData"
                     },
-                    "interactors": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
                     "source": {
                         "$ref": "#/components/schemas/ChatSourceData"
                     },
@@ -19881,6 +20035,12 @@
                     },
                     "sip_password": {
                         "type": "string"
+                    },
+                    "sip_proxy": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "departments": {
                         "type": "array",
