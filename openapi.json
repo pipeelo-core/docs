@@ -1436,7 +1436,7 @@
         "/chats/mark-as-answered": {
             "patch": {
                 "operationId": "chats.mark-as-answered",
-                "description": "Marca a conversa informada em `chat_id` como respondida quando a última mensagem é do cliente ou quando a conversa acabou de chegar ao atendente (`is_new_transfer`): o chat deixa de aparecer como pendente, perde o selo de nova, nenhuma métrica de resposta é registrada e a reatribuição automática é cancelada. Sem efeito nos outros casos.",
+                "description": "Marca a conversa informada em `chat_id` como respondida quando a última mensagem é do cliente ou quando a conversa acabou de chegar ao atendente (`is_new_transfer`): o chat deixa de aparecer como pendente, perde o selo de nova, nenhuma métrica de resposta é registrada e a reatribuição automática é cancelada. Sem efeito nos outros casos. Retorna 400 quando a empresa desativou a opção nas configurações.",
                 "summary": "Marcar conversa como respondida",
                 "tags": [
                     "Ações de conversa"
@@ -1717,7 +1717,7 @@
             },
             "post": {
                 "operationId": "campaign.store",
-                "description": "Cria a campanha e inicia o envio de forma assíncrona, em lotes de clientes com atraso escalonado entre eles. No tipo `attendant`, `category_id` opcional define o departamento das conversas criadas, que permanecem com o atendente, sem fila. Em template com imagem, vídeo ou documento no cabeçalho, `template_file` (multipart, opcional) troca a mídia para todos os clientes; sem arquivo, vai a mídia salva no template e o corpo pode seguir em JSON. Em `message_channel=WHATSAPP_GO`, a campanha é de texto livre: `message` é obrigatório (aceita variáveis como `@customer_first_name`), não usa template e o número precisa estar conectado; nos outros canais, `message` é ignorado.",
+                "description": "Cria a campanha e inicia o envio de forma assíncrona, em lotes de clientes com atraso escalonado entre eles. No tipo `attendant`, `category_id` opcional define o departamento das conversas criadas, que permanecem com o atendente, sem fila. Em template com imagem, vídeo ou documento no cabeçalho, `template_file` (multipart, opcional) troca a mídia para todos os clientes; sem arquivo, vai a mídia salva no template e o corpo pode seguir em JSON. Em `message_channel=WHATSAPP_GO`, a campanha é de texto livre: `message` é obrigatório (aceita variáveis como `@customer_first_name`), não usa template e o número precisa estar conectado; `file` (multipart, opcional) manda 1 arquivo para todos os clientes, com `message` como legenda: imagem JPG ou PNG, vídeo MP4 ou documento PDF, Word, Excel, PowerPoint ou TXT, até 16 MB. Nos outros canais, `message` e `file` são ignorados.",
                 "summary": "Criar campanha",
                 "tags": [
                     "Campanhas"
@@ -2130,7 +2130,7 @@
         "/website-channel/message/{identifier}": {
             "post": {
                 "operationId": "websiteChannelMessage.store",
-                "description": "Endpoint público, sem token. O `{identifier}` é o id do canal do site registrado em `POST /website-channel`.\n\n**Identificação:** o visitante é identificado pelo `external_id` — o token de sessão uuid v4 cunhado pelo widget no primeiro uso e guardado no navegador. O formato uuid é obrigatório (`422` caso contrário): o token é a proteção prática do socket e do histórico, então nunca use um dado do usuário (email, id no site) como token. No primeiro contato o visitante é criado automaticamente com o nome \"Visitante\" + os últimos 6 caracteres do token. O bloco `user` opcional declara os dados do cliente quando o site os conhece (ex.: área logada, via `Pipeelo(\"setUser\", …)` no snippet) — `user[name]`, `user[email]`, `user[phone]` e `user[document]`, todos opcionais (JSON ou multipart): no primeiro contato entram no cadastro; nas mensagens seguintes preenchem apenas campos ainda vazios (o nome \"Visitante…\" conta como vazio) e nunca sobrescrevem dados já preenchidos. Campo inválido no bloco é descartado em silêncio — a mensagem nunca é rejeitada por causa dele.\n\n**Conteúdo:** exatamente um por requisição — `text` (em `application/json` ou multipart) ou um arquivo em `multipart/form-data`: `image` (JPEG/PNG, até 50 MB), `audio` (AAC, MP3, MP4, OGG, WAV, WebM e outros, até 30 MB), `video` (MP4/3GP, até 100 MB) ou `document` (PDF, Word, Excel, PowerPoint, CSV, TXT, ZIP e outros, até 50 MB) — ou, no lugar de qualquer um deles, o par `latitude` e `longitude` (graus decimais, de -90 a 90 e de -180 a 180, em `application/json` ou multipart), que grava uma mensagem de localização: os dois são obrigatórios juntos e não acompanham texto nem arquivo. Com `audio`, aceita `peaks[]` opcional — 64 inteiros de 0 a 100, um por barra da onda, medidos por quem gravou; saem como `peaks` no socket e no histórico. Junto com `text`, aceita `selected_value` opcional (máx. 64 caracteres) — o `value` do item escolhido quando o visitante responde a uma mensagem interativa (`items` no payload do socket/histórico). Ao receber a resposta, a mensagem interativa mais recente da conversa passa a expor o mesmo `selected_value` no histórico — use para desabilitar opções já respondidas.\n\n**Responder a uma mensagem:** com qualquer conteúdo, aceita `reply_to_id` opcional — o `message_id` (uuid) da mensagem que o visitante está respondendo, como no WhatsApp. A mensagem volta com a citação em `reply_to` no socket e no histórico; quando a original é do mesmo atendimento, o atendente e a IA também veem a qual mensagem ela responde.\n\n**Atendimento:** a mensagem entra no atendimento aberto do visitante neste canal; se não houver nenhum aberto, um novo é criado e segue o fluxo normal de fila. O visitante nunca tem mais de um atendimento aberto por canal. O `chat_id` devolvido no `201` diz em qual atendimento a mensagem caiu — compare com o atendimento que estava em tela para saber que um novo começou.\n\n**Respostas em tempo real:** a conversa segue o fluxo normal de atendimento (IA e atendentes). As respostas chegam no evento `website-channel.message` do canal público de websocket `website-channel.{identifier}.{external_id}` (protocolo Pusher, host `soketi.pipeelo.com`), sempre no mesmo formato de mensagem do histórico. O socket entrega os dois lados da conversa, incluindo o eco desta mensagem; mensagens perdidas com a página fechada não são reenviadas pelo socket — recarregue o histórico ao reabrir.\n\n**Encerramento em tempo real:** o mesmo canal entrega o evento `website-channel.chat-closed` com `chat_id`, `ended_at` e `protocol` quando o atendimento é encerrado por um atendente, pela IA, por uma automação ou por inatividade. A partir daí ele vira só histórico: a próxima mensagem do visitante abre um atendimento novo. O evento é uma otimização de tempo real, não uma garantia de entrega — nem todo encerramento automático o emite, e o socket não reenvia o que passou com a página fechada. Quem manda no estado é o bloco `chats` de `GET /website-channel/history/{identifier}`: releia ao abrir a página e ao reconectar o websocket.\n\n**Observações:** não há deduplicação de reenvio no servidor — em caso de timeout, deduplique pelo `message_id` retornado. Visitante bloqueado recebe `200` com corpo vazio. Identificador inexistente retorna `404`. Limite: 60 requisições/minuto por visitante (`identifier` + `external_id`) e 240/minuto por IP — acima disso, `429`.",
+                "description": "Endpoint público, sem token. O `{identifier}` é o id do canal do site registrado em `POST /website-channel`.\n\n**Identificação:** o visitante é identificado pelo `external_id` — o token de sessão uuid v4 cunhado pelo widget no primeiro uso e guardado no navegador. O formato uuid é obrigatório (`422` caso contrário): o token é a proteção prática do socket e do histórico, então nunca use um dado do usuário (email, id no site) como token. No primeiro contato o visitante é criado automaticamente com o nome \"Visitante\" + os últimos 6 caracteres do token. O bloco `user` opcional declara os dados do cliente quando o site os conhece (ex.: área logada, via `Pipeelo(\"setUser\", …)` no snippet) — `user[name]`, `user[email]`, `user[phone]`, `user[document]`, `user[gender]`, `user[birthday]`, `user[country]`, `user[state]`, `user[city]`, `user[cep]`, `user[street]`, `user[number]` e `user[neighborhood]`, todos opcionais (JSON ou multipart): no primeiro contato entram no cadastro; nas mensagens seguintes preenchem apenas campos ainda vazios (o nome \"Visitante…\" conta como vazio) e nunca sobrescrevem dados já preenchidos. `user[gender]` aceita `masculino` ou `feminino` (também `masculine`/`feminine` ou `m`/`f`) e grava `masculine`/`feminine`; `user[birthday]` aceita `DD/MM/AAAA` ou `AAAA-MM-DD`; `user[cep]` aceita 8 dígitos, com ou sem hífen. Campo inválido no bloco é descartado em silêncio — a mensagem nunca é rejeitada por causa dele.\n\n**Conteúdo:** exatamente um por requisição — `text` (em `application/json` ou multipart) ou um arquivo em `multipart/form-data`: `image` (JPEG/PNG, até 50 MB), `audio` (AAC, MP3, MP4, OGG, WAV, WebM e outros, até 30 MB), `video` (MP4/3GP, até 100 MB) ou `document` (PDF, Word, Excel, PowerPoint, CSV, TXT, ZIP e outros, até 50 MB) — ou, no lugar de qualquer um deles, o par `latitude` e `longitude` (graus decimais, de -90 a 90 e de -180 a 180, em `application/json` ou multipart), que grava uma mensagem de localização: os dois são obrigatórios juntos e não acompanham texto nem arquivo. Com `audio`, aceita `peaks[]` opcional — 64 inteiros de 0 a 100, um por barra da onda, medidos por quem gravou; saem como `peaks` no socket e no histórico. Junto com `text`, aceita `selected_value` opcional (máx. 64 caracteres) — o `value` do item escolhido quando o visitante responde a uma mensagem interativa (`items` no payload do socket/histórico). Ao receber a resposta, a mensagem interativa mais recente da conversa passa a expor o mesmo `selected_value` no histórico — use para desabilitar opções já respondidas.\n\n**Responder a uma mensagem:** com qualquer conteúdo, aceita `reply_to_id` opcional — o `message_id` (uuid) da mensagem que o visitante está respondendo, como no WhatsApp. A mensagem volta com a citação em `reply_to` no socket e no histórico; quando a original é do mesmo atendimento, o atendente e a IA também veem a qual mensagem ela responde.\n\n**Atendimento:** a mensagem entra no atendimento aberto do visitante neste canal; se não houver nenhum aberto, um novo é criado e segue o fluxo normal de fila. O visitante nunca tem mais de um atendimento aberto por canal. O `chat_id` devolvido no `201` diz em qual atendimento a mensagem caiu — compare com o atendimento que estava em tela para saber que um novo começou.\n\n**Respostas em tempo real:** a conversa segue o fluxo normal de atendimento (IA e atendentes). As respostas chegam no evento `website-channel.message` do canal público de websocket `website-channel.{identifier}.{external_id}` (protocolo Pusher, host `soketi.pipeelo.com`), sempre no mesmo formato de mensagem do histórico. O socket entrega os dois lados da conversa, incluindo o eco desta mensagem; mensagens perdidas com a página fechada não são reenviadas pelo socket — recarregue o histórico ao reabrir.\n\n**Encerramento em tempo real:** o mesmo canal entrega o evento `website-channel.chat-closed` com `chat_id`, `ended_at` e `protocol` quando o atendimento é encerrado por um atendente, pela IA, por uma automação ou por inatividade. A partir daí ele vira só histórico: a próxima mensagem do visitante abre um atendimento novo. O evento é uma otimização de tempo real, não uma garantia de entrega — nem todo encerramento automático o emite, e o socket não reenvia o que passou com a página fechada. Quem manda no estado é o bloco `chats` de `GET /website-channel/history/{identifier}`: releia ao abrir a página e ao reconectar o websocket.\n\n**Observações:** não há deduplicação de reenvio no servidor — em caso de timeout, deduplique pelo `message_id` retornado. Visitante bloqueado recebe `200` com corpo vazio. Identificador inexistente retorna `404`. Limite: 60 requisições/minuto por visitante (`identifier` + `external_id`) e 240/minuto por IP — acima disso, `429`.",
                 "summary": "Enviar mensagem pelo widget (público)",
                 "tags": [
                     "Canal do Site"
@@ -2819,7 +2819,7 @@
         "/website-channel/config/{identifier}": {
             "get": {
                 "operationId": "websiteChannelMessage.config",
-                "description": "Endpoint público, sem token: devolve a configuração do widget para o boot — `name`, `widget_color`, `welcome_message`, `theme` (`light` ou `dark`), `message_preview` (quando preenchida, o widget a exibe como teaser junto à bolha antes de abrir; `null` = sem teaser), `display_mode` (`floating` = bolha no canto; `fullscreen` = chat em tela cheia, sem bolha, teaser, minimizar ou branding), `pre_chat_form` (política de pré-chat; `null` = sem formulário) e `launcher_image` (URL pública da imagem que preenche a bolha enquanto o chat está fechado; `null` = bolha padrão na cor do canal, com o ícone de balão). O `{identifier}` é o id do canal registrado em `POST /website-channel`.\n\n`launcher_image` é para desenhar com recorte circular, preenchendo a bolha inteira — foto de quem atende, logo ou mascote. Com o chat aberto a imagem sai e volta o ícone de fechar na cor da marca. Campo ausente ou `null` = comportamento de hoje.\n\n`pre_chat_form` é um objeto `{\"fields\": [\"name\", \"email\"]}` — os dados que o visitante precisa ter antes da primeira mensagem, na ordem de exibição, entre `name`, `email`, `phone` e `document`. Exiba o formulário só na primeira conversa (`GET /website-channel/history/{identifier}` com `data` e `chats` vazios) e só para os campos que o site ainda não declarou via `Pipeelo(\"setUser\", …)`; o que o visitante digitar vai no bloco `user` do envio de mensagem. Leitor tolerante: campo ausente, `null` ou `fields` vazio = sem formulário, e valores desconhecidos dentro de `fields` devem ser ignorados.\n\n`push_public_key` é a chave pública VAPID da plataforma, para o widget assinar notificações push do navegador (`null` = push desligado: não ofereça a inscrição). Só vale com o painel aberto em aba própria, como na tela cheia aberta pelo link — dentro de iframe o navegador não deixa pedir permissão.\n\nA resposta é cacheável (`Cache-Control` público de 5 minutos) — mudanças de configuração demoram esse tanto para refletir. Identificador inexistente retorna `404`. Limite: 300 requisições/minuto por IP.",
+                "description": "Endpoint público, sem token: devolve a configuração do widget para o boot — `name`, `widget_color`, `welcome_message`, `theme` (`light` ou `dark`), `message_preview` (quando preenchida, o widget a exibe como teaser junto à bolha antes de abrir; `null` = sem teaser), `display_mode` (`floating` = bolha no canto; `fullscreen` = chat em tela cheia, sem bolha, teaser, minimizar ou branding), `pre_chat_form` (política de pré-chat; `null` = sem formulário) e `launcher_image` (URL pública da imagem que preenche a bolha enquanto o chat está fechado; `null` = bolha padrão na cor do canal, com o ícone de balão). O `{identifier}` é o id do canal registrado em `POST /website-channel`.\n\n`launcher_image` é para desenhar com recorte circular, preenchendo a bolha inteira — foto de quem atende, logo ou mascote. Com o chat aberto a imagem sai e volta o ícone de fechar na cor da marca. Campo ausente ou `null` = comportamento de hoje.\n\n`pre_chat_form` é um objeto `{\"fields\": [\"name\", \"email\"]}` — os dados que o visitante precisa ter antes da primeira mensagem, na ordem de exibição, entre `name`, `email`, `phone`, `document`, `gender`, `birthday`, `country`, `state`, `city`, `cep`, `street`, `number` e `neighborhood`. Exiba o formulário só na primeira conversa (`GET /website-channel/history/{identifier}` com `data` e `chats` vazios) e só para os campos que o site ainda não declarou via `Pipeelo(\"setUser\", …)`; o que o visitante digitar vai no bloco `user` do envio de mensagem. Leitor tolerante: campo ausente, `null` ou `fields` vazio = sem formulário, e valores desconhecidos dentro de `fields` devem ser ignorados.\n\n`push_public_key` é a chave pública VAPID da plataforma, para o widget assinar notificações push do navegador (`null` = push desligado: não ofereça a inscrição). Só vale com o painel aberto em aba própria, como na tela cheia aberta pelo link — dentro de iframe o navegador não deixa pedir permissão.\n\nA resposta é cacheável (`Cache-Control` público de 5 minutos) — mudanças de configuração demoram esse tanto para refletir. Identificador inexistente retorna `404`. Limite: 300 requisições/minuto por IP.",
                 "summary": "Config do widget (público)",
                 "tags": [
                     "Canal do Site"
@@ -2947,7 +2947,7 @@
             },
             "post": {
                 "operationId": "website-channel.store",
-                "description": "Registra um site do tenant como canal de atendimento via widget. O `id` retornado é o identificador público de embed: ele vai no snippet colado no site (não é segredo) e identifica o canal nos endpoints públicos e no canal de websocket.\n\n`category_id` define a fila para onde as conversas vão no atendimento humano e `assistant_id` o agente de IA que atende primeiro; sem eles, vale a distribuição padrão da conta.\n\n`widget_color`, `welcome_message`, `theme` (`light` ou `dark`, padrão `light`), `message_preview` e `display_mode` compõem a configuração do widget, devolvida pelo endpoint público de config. `message_preview`, quando preenchida, aparece como teaser junto à bolha antes de o visitante abrir o widget. `display_mode` (`floating` ou `fullscreen`, padrão `floating`) define a apresentação: `floating` é a bolha no canto do site; `fullscreen` ocupa a tela toda para embutir o chat como app — sem bolha, sem teaser, sem minimizar e sem o branding da plataforma.\n\n`snippet_user_fields` é a lista de dados do cliente que o snippet deve declarar via `Pipeelo(\"setUser\", …)` — qualquer subconjunto de `name`, `email`, `phone` e `document`, ou `null` para nenhum. Serve ao painel para montar o código de embed: não entra na configuração pública do widget nem altera o comportamento do canal.\n\n`pre_chat_form` é a política de pré-chat: quais dados o visitante precisa ter antes da primeira mensagem. Objeto `{\"fields\": [\"name\", \"email\"]}`, com `fields` sendo um subconjunto não vazio e sem repetição de `name`, `email`, `phone` e `document` — a ordem gravada é a ordem de exibição no formulário. `null` (padrão) desliga o pré-chat. Diferente do `snippet_user_fields`, este campo vai para a configuração pública do widget: o formulário só aparece quando o site não declarou os dados via `Pipeelo(\"setUser\", …)`. O que o visitante digita chega pelo bloco `user` do envio de mensagem, como qualquer outro dado declarado.\n\nA imagem da bolha (`launcher_image`) não é aceita aqui: ela tem endpoint próprio, `POST /website-channel/launcher-image/{id}`, porque a URL é sempre produzida pela plataforma a partir de um upload.",
+                "description": "Registra um site do tenant como canal de atendimento via widget. O `id` retornado é o identificador público de embed: ele vai no snippet colado no site (não é segredo) e identifica o canal nos endpoints públicos e no canal de websocket.\n\n`category_id` define a fila para onde as conversas vão no atendimento humano e `assistant_id` o agente de IA que atende primeiro; sem eles, vale a distribuição padrão da conta.\n\n`widget_color`, `welcome_message`, `theme` (`light` ou `dark`, padrão `light`), `message_preview` e `display_mode` compõem a configuração do widget, devolvida pelo endpoint público de config. `message_preview`, quando preenchida, aparece como teaser junto à bolha antes de o visitante abrir o widget. `display_mode` (`floating` ou `fullscreen`, padrão `floating`) define a apresentação: `floating` é a bolha no canto do site; `fullscreen` ocupa a tela toda para embutir o chat como app — sem bolha, sem teaser, sem minimizar e sem o branding da plataforma.\n\n`snippet_user_fields` é a lista de dados do cliente que o snippet deve declarar via `Pipeelo(\"setUser\", …)` — qualquer subconjunto de `name`, `email`, `phone`, `document`, `gender`, `birthday`, `country`, `state`, `city`, `cep`, `street`, `number` e `neighborhood`, ou `null` para nenhum. Serve ao painel para montar o código de embed: não entra na configuração pública do widget nem altera o comportamento do canal.\n\n`pre_chat_form` é a política de pré-chat: quais dados o visitante precisa ter antes da primeira mensagem. Objeto `{\"fields\": [\"name\", \"email\"]}`, com `fields` sendo um subconjunto não vazio e sem repetição de `name`, `email`, `phone`, `document`, `gender`, `birthday`, `country`, `state`, `city`, `cep`, `street`, `number` e `neighborhood` — a ordem gravada é a ordem de exibição no formulário. `null` (padrão) desliga o pré-chat. Diferente do `snippet_user_fields`, este campo vai para a configuração pública do widget: o formulário só aparece quando o site não declarou os dados via `Pipeelo(\"setUser\", …)`. O que o visitante digita chega pelo bloco `user` do envio de mensagem, como qualquer outro dado declarado.\n\nA imagem da bolha (`launcher_image`) não é aceita aqui: ela tem endpoint próprio, `POST /website-channel/launcher-image/{id}`, porque a URL é sempre produzida pela plataforma a partir de um upload.",
                 "summary": "Registrar canal do site",
                 "tags": [
                     "Canal do Site"
@@ -8483,7 +8483,7 @@
         "/channel-groups/message/template": {
             "post": {
                 "operationId": "channel-groups.message.template",
-                "description": "Envia o template aprovado `name` para o grupo `channel_group_id` do oficial (Cloud e 360dialog), com as variáveis em `parameter_header` e `parameters_body` e, no cabeçalho de mídia, o arquivo em `file` (multipart), com nome opcional em `file_name`. Só template sem botão; com botão, retorna 422. As variáveis do cliente e da conversa (atendente e protocolo) saem vazias no grupo. Sai na hora: volta com `status` `sent`, e a recusa da Meta volta como erro, sem gravar a mensagem. Grupo sem acesso retorna 404; grupo do WhatsApp Go, 422; grupo ainda sendo criado, 409.",
+                "description": "Envia o template aprovado `name` para o grupo `channel_group_id` do oficial (Cloud e 360dialog), com as variáveis em `parameter_header` e `parameters_body` e, no cabeçalho de mídia, o arquivo em `file` (multipart), com nome opcional em `file_name`. Só template sem botão e sem carrossel; com botão ou carrossel, retorna 422. As variáveis do cliente e da conversa (atendente e protocolo) saem vazias no grupo. Sai na hora: volta com `status` `sent`, e a recusa da Meta volta como erro, sem gravar a mensagem. Grupo sem acesso retorna 404; grupo do WhatsApp Go, 422; grupo ainda sendo criado, 409.",
                 "summary": "Enviar template no grupo de canal",
                 "tags": [
                     "Grupos de canal"
@@ -8808,17 +8808,17 @@
                         }
                     },
                     {
-                        "name": "nps_min",
+                        "name": "rating_min",
                         "in": "query",
-                        "description": "NPS mínimo (0 a 10).",
+                        "description": "Nota mínima (0 a 10).",
                         "schema": {
                             "type": "integer"
                         }
                     },
                     {
-                        "name": "nps_max",
+                        "name": "rating_max",
                         "in": "query",
-                        "description": "NPS máximo (0 a 10).",
+                        "description": "Nota máxima (0 a 10).",
                         "schema": {
                             "type": "integer"
                         }
@@ -10064,7 +10064,7 @@
         "/chats/message/web-chat-invite": {
             "post": {
                 "operationId": "chatMessage.sendWebChatInvite",
-                "description": "Envia um texto com o botão \"Continuar por aqui\" que abre a mesma conversa no chat do site (canal Website), sem custo por mensagem. A API gera o link sozinha: cria ou reaproveita a identidade do cliente no canal do site e deixa um convite pendente por 7 dias; quando o cliente abre o link, a conversa troca de canal e continua com o mesmo atendente. Disponível em conversas WhatsApp Official e WhatsApp Cloud dentro da janela de atendimento (400 nos demais canais). `button_label` é opcional (até 20 caracteres, padrão \"Continuar por aqui\"). `website_channel_id` só é obrigatório quando o tenant tem mais de um canal do site (422 sem ele); com um único canal, a API usa esse canal. Em conversa fechada há mais de 90 dias, responde 400 com a mensagem \"Não é possível executar ações em chats fechados.\"",
+                "description": "Envia um texto com o botão \"Continuar por aqui\" que abre a mesma conversa no chat do site (canal Website), sem custo por mensagem. A API gera o link sozinha: cria ou reaproveita a identidade do cliente no canal do site e deixa um convite pendente por 7 dias; quando o cliente abre o link, a conversa troca de canal e continua com o mesmo atendente. Disponível em conversas WhatsApp Official e WhatsApp Cloud dentro da janela de atendimento (400 nos demais canais). `button_label` é opcional (até 20 caracteres, padrão \"Continuar por aqui\"). `website_channel_id` só é obrigatório quando o tenant tem mais de um canal do site (422 sem ele); com um único canal, a API usa esse canal. Opcionalmente, o convite leva um arquivo no topo: `image` (JPG ou PNG, até 5 MB), `video` (MP4, até 16 MB) ou `document` (formatos aceitos pelo WhatsApp), um só por convite, em multipart/form-data — nesse caso `is_add_user_name` vai como `1` ou `0`, e a mensagem volta com o tipo do arquivo (`image`, `video` ou `document`), o caminho do arquivo e o `link` do botão; arquivo fora do tamanho ou do formato responde 422. Em conversa fechada há mais de 90 dias, responde 400 com a mensagem \"Não é possível executar ações em chats fechados.\"",
                 "summary": "Convidar para o chat web",
                 "tags": [
                     "Mensagens"
@@ -10072,7 +10072,7 @@
                 "requestBody": {
                     "required": true,
                     "content": {
-                        "application/json": {
+                        "multipart/form-data": {
                             "schema": {
                                 "$ref": "#/components/schemas/SendWebChatInviteRequest"
                             }
@@ -12729,8 +12729,8 @@
         "/analytics/chat/nps": {
             "get": {
                 "operationId": "analytics.chat.nps",
-                "description": "Retorna o NPS do período com totais de promotores, detratores e neutros. Exige `start_period` e `end_period` (máximo de 90 dias).",
-                "summary": "Consultar NPS",
+                "description": "Retorna o NPS e o CSAT do período com totais de promotores, detratores e neutros. O CSAT é o percentual de notas 9 e 10. Exige `start_period` e `end_period` (máximo de 90 dias).",
+                "summary": "Consultar NPS e CSAT",
                 "tags": [
                     "Métricas de conversas"
                 ],
@@ -12879,6 +12879,9 @@
                                         "nps": {
                                             "type": "number"
                                         },
+                                        "csat": {
+                                            "type": "number"
+                                        },
                                         "total_responses": {
                                             "type": "integer"
                                         },
@@ -12894,6 +12897,7 @@
                                     },
                                     "required": [
                                         "nps",
+                                        "csat",
                                         "total_responses"
                                     ]
                                 }
@@ -14721,7 +14725,7 @@
         "/analytics/chat/user-ranking": {
             "get": {
                 "operationId": "analytics.chat.user-ranking",
-                "description": "Retorna os atendentes das conversas fechadas no período, com a pontuação de 0 a 100: resolução no primeiro contato (peso 30), satisfação (25), nota da IA (20), tempo médio de resposta (15) e tempo médio de atendimento em horário comercial (10). Satisfação (notas 9 e 10) e resolução no primeiro contato contam para todos que participaram da conversa. Os tempos são comparados com a mediana dos atendentes do resultado. Métrica sem dado sai da conta; com menos de 3 métricas, `score` vem nulo. Quem tem menos conversas que `minimum_conversations` vem no fim, com `below_minimum`. Exige `start_period` e `end_period` (máximo de 60 dias).",
+                "description": "Retorna os atendentes das conversas fechadas no período, com a pontuação de 0 a 100: média ponderada de resolução no primeiro contato, satisfação, nota da IA, tempo médio de resposta e tempo médio de atendimento em horário comercial. Os pesos padrão são 30, 25, 20, 15 e 10; `weights` troca os cinco, e peso 0 tira a métrica da conta. Satisfação (notas 9 e 10), NPS e resolução no primeiro contato contam para todos que participaram da conversa. O NPS não entra na pontuação. Os tempos são comparados com a mediana dos atendentes do resultado. Métrica sem dado sai da conta; com menos de 3 métricas, ou menos que as métricas com peso quando elas são menos de 3, `score` vem nulo. Quem tem menos conversas que `minimum_conversations` vem no fim, com `below_minimum`. Exige `start_period` e `end_period` (máximo de 60 dias).",
                 "summary": "Consultar ranking de atendentes",
                 "tags": [
                     "Métricas de conversas"
@@ -14761,6 +14765,56 @@
                                 "format": "uuid"
                             }
                         }
+                    },
+                    {
+                        "name": "weights[first_contact_resolution]",
+                        "in": "query",
+                        "description": "Peso da resolução no primeiro contato, de 0 a 100 (padrão 30). Os cinco pesos vão juntos, com pelo menos um maior que 0.",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        }
+                    },
+                    {
+                        "name": "weights[satisfaction]",
+                        "in": "query",
+                        "description": "Peso da satisfação, de 0 a 100 (padrão 25).",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        }
+                    },
+                    {
+                        "name": "weights[ai_score]",
+                        "in": "query",
+                        "description": "Peso da nota da IA, de 0 a 100 (padrão 20).",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        }
+                    },
+                    {
+                        "name": "weights[average_response_time]",
+                        "in": "query",
+                        "description": "Peso do tempo médio de resposta, de 0 a 100 (padrão 15).",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        }
+                    },
+                    {
+                        "name": "weights[average_service_time]",
+                        "in": "query",
+                        "description": "Peso do tempo médio de atendimento, de 0 a 100 (padrão 10).",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        }
                     }
                 ],
                 "responses": {
@@ -14780,6 +14834,34 @@
                                         "minimum_conversations": {
                                             "type": "integer",
                                             "description": "O maior entre 5 e 20% da mediana de conversas dos atendentes, arredondado para cima; 0 quando não há atendentes."
+                                        },
+                                        "weights": {
+                                            "type": "object",
+                                            "description": "Pesos usados na pontuação.",
+                                            "properties": {
+                                                "first_contact_resolution": {
+                                                    "type": "integer"
+                                                },
+                                                "satisfaction": {
+                                                    "type": "integer"
+                                                },
+                                                "ai_score": {
+                                                    "type": "integer"
+                                                },
+                                                "average_response_time": {
+                                                    "type": "integer"
+                                                },
+                                                "average_service_time": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "first_contact_resolution",
+                                                "satisfaction",
+                                                "ai_score",
+                                                "average_response_time",
+                                                "average_service_time"
+                                            ]
                                         },
                                         "data": {
                                             "type": "array",
@@ -14809,6 +14891,13 @@
                                                             "null"
                                                         ],
                                                         "description": "Percentual de notas 9 e 10."
+                                                    },
+                                                    "nps": {
+                                                        "type": [
+                                                            "number",
+                                                            "null"
+                                                        ],
+                                                        "description": "NPS de -100 a 100: percentual de notas 9 e 10 menos o de notas até 6."
                                                     },
                                                     "ai_score": {
                                                         "type": [
@@ -14848,6 +14937,7 @@
                                                     "conversations",
                                                     "first_contact_resolution",
                                                     "satisfaction",
+                                                    "nps",
                                                     "ai_score",
                                                     "average_response_time",
                                                     "average_service_time",
@@ -14859,6 +14949,7 @@
                                     },
                                     "required": [
                                         "minimum_conversations",
+                                        "weights",
                                         "data"
                                     ]
                                 }
@@ -15190,7 +15281,7 @@
                         }
                     },
                     {
-                        "name": "nps",
+                        "name": "rating",
                         "in": "query",
                         "schema": {
                             "type": [
@@ -15868,7 +15959,7 @@
         "/notifier/metrics/{notifierId}": {
             "get": {
                 "operationId": "notifier.metrics",
-                "description": "Retorna as métricas de envio de um notificador. Exige `start_period` e `end_period` (intervalo máximo de 90 dias); `nps` e `responded` restringem as conversas contadas.",
+                "description": "Retorna as métricas de envio de um notificador. Exige `start_period` e `end_period` (intervalo máximo de 90 dias); `rating` e `responded` restringem as conversas contadas.",
                 "summary": "Consultar métricas do notificador",
                 "tags": [
                     "Notificadores"
@@ -15901,9 +15992,9 @@
                         }
                     },
                     {
-                        "name": "nps",
+                        "name": "rating",
                         "in": "query",
-                        "description": "Filtra pela nota NPS da conversa: `none` (sem nota) ou uma nota de `1` a `10`.",
+                        "description": "Filtra pela nota da conversa: `none` (sem nota) ou uma nota de `1` a `10`.",
                         "schema": {
                             "type": [
                                 "string",
@@ -15993,9 +16084,9 @@
                         }
                     },
                     {
-                        "name": "nps",
+                        "name": "rating",
                         "in": "query",
-                        "description": "Filtra pela nota NPS da conversa: `none` (sem nota) ou uma nota de `1` a `10`.",
+                        "description": "Filtra pela nota da conversa: `none` (sem nota) ou uma nota de `1` a `10`.",
                         "schema": {
                             "type": [
                                 "string",
@@ -16485,7 +16576,7 @@
         "/telegram/{id}": {
             "put": {
                 "operationId": "telegram.update",
-                "description": "Atualiza nome, categoria e assistente de IA do bot. Informar `token` rotaciona o token do mesmo bot e reconfigura o webhook.",
+                "description": "Atualiza nome, categoria e assistente de IA do bot. Informar `token` rotaciona o token do mesmo bot e reconfigura o webhook. Use `is_internal` para marcar o canal como interno: as conversas fecham direto, sem análises de IA, sem mensagem de encerramento e sem a IA de encerramento.",
                 "summary": "Atualizar bot do Telegram",
                 "tags": [
                     "Telegram"
@@ -16839,7 +16930,7 @@
             },
             "post": {
                 "operationId": "messageTemplate.store",
-                "description": "Submete um novo template à aprovação da Meta e o registra localmente com status `PENDING`. Use `message_channel` (`WHATSAPP_OFFICIAL`, padrão, ou `WHATSAPP_CLOUD`) para escolher o provedor. Botões `URL` com variáveis na URL (ex.: `https://site.com/{{1}}`) exigem `example` com a URL de exemplo preenchida. Templates de cobrança PIX usam `display_format: ORDER_DETAILS` com um único botão `ORDER_DETAILS` e exigem categoria `UTILITY` ou `MARKETING`; esse botão não recebe `text`, a Meta fixa o rótulo em `Copy Pix code`. Templates de categoria `AUTHENTICATION` não aceitam texto livre: a Meta gera o corpo, o rodapé e o botão. Envie `BODY` com `add_security_recommendation`, `FOOTER` com `code_expiration_minutes`, `message_send_ttl_seconds` no nível do template (o teto de 900 s vale apenas para `AUTHENTICATION`) e um único botão `OTP` com `otp_type: COPY_CODE` (todos opcionais, exceto o botão). No envio, o código informado em `parameters_body[0]` é reaproveitado automaticamente no botão. O tipo de botão `WEB_CHAT` vira um botão de URL dinâmica apontando para o chat do site — URL e `example` são preenchidos pela API e, no envio, o link é gerado por cliente; ele conta no limite de 2 botões de URL. Quando o `BODY` tem variáveis (`{{1}}`, `{{2}}`…), o texto sem as variáveis pode ter no máximo 700 caracteres, para o corpo preenchido caber no limite de 1024 caracteres da Meta no envio. Use `department_ids` para ligar o template a departamentos; sem departamento, ele é global. `department_id` não é mais aceito. O corpo da resposta é repassado do provedor WhatsApp.",
+                "description": "Submete um novo template à aprovação da Meta e o registra localmente com status `PENDING`. Use `message_channel` (`WHATSAPP_OFFICIAL`, padrão, ou `WHATSAPP_CLOUD`) para escolher o provedor. Botões `URL` com variáveis na URL (ex.: `https://site.com/{{1}}`) exigem `example` com a URL de exemplo preenchida. Templates de cobrança PIX usam `display_format: ORDER_DETAILS` com um único botão `ORDER_DETAILS` e exigem categoria `UTILITY` ou `MARKETING`; esse botão não recebe `text`, a Meta fixa o rótulo em `Copy Pix code`. Templates de categoria `AUTHENTICATION` não aceitam texto livre: a Meta gera o corpo, o rodapé e o botão. Envie `BODY` com `add_security_recommendation`, `FOOTER` com `code_expiration_minutes`, `message_send_ttl_seconds` no nível do template (o teto de 900 s vale apenas para `AUTHENTICATION`) e um único botão `OTP` com `otp_type: COPY_CODE` (todos opcionais, exceto o botão). No envio, o código informado em `parameters_body[0]` é reaproveitado automaticamente no botão. O tipo de botão `WEB_CHAT` vira um botão de URL dinâmica apontando para o chat do site — URL e `example` são preenchidos pela API e, no envio, o link é gerado por cliente; ele conta no limite de 2 botões de URL. Quando o `BODY` tem variáveis (`{{1}}`, `{{2}}`…), o texto sem as variáveis pode ter no máximo 700 caracteres, para o corpo preenchido caber no limite de 1024 caracteres da Meta no envio. O botão `FLOW` abre um Flow publicado da WABA: envie `text`, `flow_id` e, se quiser, `flow_action` (`navigate`, padrão, ou `data_exchange`) e `navigate_screen`; vale para `MARKETING` e `UTILITY`. O carrossel é o componente `CAROUSEL`, depois do `BODY`, só em `MARKETING`: `cards` com 2 a 10 cards, todos com os mesmos componentes — `HEADER` com `format` `IMAGE` ou `VIDEO`, `BODY` opcional de até 160 caracteres e `BUTTONS` com até 2 botões `QUICK_REPLY`, `URL` ou `PHONE_NUMBER`. Com carrossel, envie `multipart/form-data` com um arquivo por card em `card_files[0]`, `card_files[1]`…, na ordem dos cards (JPG, PNG, MP4 ou 3GP, até 16 MB cada e 100 MB no pedido inteiro); a mídia fica salva e vai em todo envio. O `PUT /template/{id}` não aceita `FLOW` nem `CAROUSEL`. Use `department_ids` para ligar o template a departamentos; sem departamento, ele é global. `department_id` não é mais aceito. O corpo da resposta é repassado do provedor WhatsApp.",
                 "summary": "Criar template",
                 "tags": [
                     "Templates"
@@ -17080,7 +17171,7 @@
         "/template/send": {
             "post": {
                 "operationId": "messageTemplate.send",
-                "description": "Envia uma mensagem de template (HSM) para a conversa informada e registra a mensagem enviada. Suporta conversas dos canais WhatsApp Official e WhatsApp Cloud. Templates com botão `ORDER_DETAILS` exigem o objeto `order_details` com `value` em centavos (`8990`) ou em reais com vírgula ou ponto (`89,90`, `89.90` ou `R$ 89,90`), `product_name` e ao menos uma forma de pagamento: PIX (`code`) e/ou boleto (`digitable_line`, linha digitável com ou sem formatação). `reference_id` é opcional; sem ele a API gera um. No PIX, `type`, `merchant_name` e `key` são opcionais: sem eles a API usa `pix_dynamic_code`, o nome da empresa e a chave lida do próprio código (com o `key_type`); se não identificar a chave, responde 422 em `order_details.code`. `key_type` aceita `CNPJ`, `CPF`, `EVP`, `PHONE` ou `EMAIL`; com `key` informada e sem `key_type`, o padrão é `CNPJ`. Com as duas formas de pagamento, o WhatsApp mostra os botões de copiar o código Pix e o código do boleto. Sem o objeto a chamada responde 400. Templates com botão `COPY_CODE` enviam o código gravado no próprio template. Em template com header de mídia, o arquivo enviado em `file` tem prioridade; sem `file`, a API usa a mídia salva no template. O `file` segue os limites do WhatsApp por tipo de header: imagem (JPG ou PNG) até 5 MB, vídeo (MP4 ou 3GP) até 16 MB e documento até 100 MB; acima disso responde 400. No canal WhatsApp Cloud, template com header de mídia sem `file` e sem mídia salva responde 400 — edite o template reenviando a mídia. Templates com botão do chat web (criados com o tipo `WEB_CHAT`, URL `{widget}/?c={{1}}`) recebem o link automaticamente: não envie a variável do botão em `parameters_body`; `website_channel_id` só é obrigatório quando o tenant tem mais de um canal do site (422 sem ele). Em conversa fechada há mais de 90 dias, responde 400 com a mensagem \"Não é possível executar ações em chats fechados.\"",
+                "description": "Envia uma mensagem de template (HSM) para a conversa informada e registra a mensagem enviada. Suporta conversas dos canais WhatsApp Official e WhatsApp Cloud. Templates com botão `ORDER_DETAILS` exigem o objeto `order_details` com `value` em centavos (`8990`) ou em reais com vírgula ou ponto (`89,90`, `89.90` ou `R$ 89,90`), `product_name` e ao menos uma forma de pagamento: PIX (`code`) e/ou boleto (`digitable_line`, linha digitável com ou sem formatação). `reference_id` é opcional; sem ele a API gera um. No PIX, `type`, `merchant_name` e `key` são opcionais: sem eles a API usa `pix_dynamic_code`, o nome da empresa e a chave lida do próprio código (com o `key_type`); se não identificar a chave, responde 422 em `order_details.code`. `key_type` aceita `CNPJ`, `CPF`, `EVP`, `PHONE` ou `EMAIL`; com `key` informada e sem `key_type`, o padrão é `CNPJ`. Com as duas formas de pagamento, o WhatsApp mostra os botões de copiar o código Pix e o código do boleto. Sem o objeto a chamada responde 400. Templates com botão `COPY_CODE` enviam o código gravado no próprio template. Templates com botão `FLOW` mandam o botão sozinho, sem variável. No carrossel, cada card usa a mídia salva na criação e `file` responde 400; `parameters_body` segue a ordem das variáveis: corpo principal, depois card por card (texto do card e botão `URL`). Em template com header de mídia, o arquivo enviado em `file` tem prioridade; sem `file`, a API usa a mídia salva no template. O `file` segue os limites do WhatsApp por tipo de header: imagem (JPG ou PNG) até 5 MB, vídeo (MP4 ou 3GP) até 16 MB e documento até 100 MB; acima disso responde 400. No canal WhatsApp Cloud, template com header de mídia sem `file` e sem mídia salva responde 400 — edite o template reenviando a mídia. Templates com botão do chat web (criados com o tipo `WEB_CHAT`, URL `{widget}/?c={{1}}`) recebem o link automaticamente: não envie a variável do botão em `parameters_body`; `website_channel_id` só é obrigatório quando o tenant tem mais de um canal do site (422 sem ele). Em conversa fechada há mais de 90 dias, responde 400 com a mensagem \"Não é possível executar ações em chats fechados.\"",
                 "summary": "Enviar template",
                 "tags": [
                     "Templates"
@@ -18333,7 +18424,7 @@
         "/whatsapp-cloud/{id}": {
             "put": {
                 "operationId": "whatsapp-cloud.update",
-                "description": "Atualiza nome, categoria e assistente de IA do canal. Use `is_default` para definir o canal como padrão do tenant, removendo o padrão dos outros canais WhatsApp.",
+                "description": "Atualiza nome, categoria e assistente de IA do canal. Use `is_default` para definir o canal como padrão do tenant, removendo o padrão dos outros canais WhatsApp. Use `is_internal` para marcar o canal como interno: as conversas fecham direto, sem análises de IA, sem mensagem de encerramento e sem a IA de encerramento.",
                 "summary": "Atualizar canal WhatsApp Cloud",
                 "tags": [
                     "WhatsApp Cloud"
@@ -18568,6 +18659,7 @@
         "/whatsapp-official/{id}": {
             "put": {
                 "operationId": "whatsapp-official.update",
+                "description": "Use `is_internal` para marcar o canal como interno: as conversas fecham direto, sem análises de IA, sem mensagem de encerramento e sem a IA de encerramento.",
                 "summary": "Atualizar canal WhatsApp Official",
                 "tags": [
                     "WhatsApp Official"
@@ -21114,7 +21206,7 @@
                     "protocol": {
                         "type": "string"
                     },
-                    "nps": {
+                    "rating": {
                         "type": "integer"
                     },
                     "campaignId": {
@@ -21187,7 +21279,7 @@
                         ],
                         "format": "date-time"
                     },
-                    "nps": {
+                    "rating": {
                         "type": "integer"
                     },
                     "protocol": {
@@ -21655,6 +21747,15 @@
                         "format": "binary",
                         "contentMediaType": "application/octet-stream",
                         "description": "Maximum file size: 102400 kilobytes."
+                    },
+                    "file": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "binary",
+                        "contentMediaType": "application/octet-stream",
+                        "description": "Maximum file size: 16384 kilobytes."
                     },
                     "assistant_id": {
                         "type": "string"
@@ -22307,7 +22408,8 @@
                                         "HEADER",
                                         "BODY",
                                         "FOOTER",
-                                        "BUTTONS"
+                                        "BUTTONS",
+                                        "CAROUSEL"
                                     ]
                                 },
                                 "text": {
@@ -22346,7 +22448,8 @@
                                                     "COPY_CODE",
                                                     "ORDER_DETAILS",
                                                     "OTP",
-                                                    "WEB_CHAT"
+                                                    "WEB_CHAT",
+                                                    "FLOW"
                                                 ]
                                             },
                                             "otp_type": {
@@ -22383,9 +22486,138 @@
                                                     "string",
                                                     "null"
                                                 ]
+                                            },
+                                            "flow_id": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ]
+                                            },
+                                            "flow_action": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ],
+                                                "enum": [
+                                                    "navigate",
+                                                    "data_exchange",
+                                                    null
+                                                ]
+                                            },
+                                            "navigate_screen": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ]
                                             }
                                         }
                                     }
+                                },
+                                "cards": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "components": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "type": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "HEADER",
+                                                                "BODY",
+                                                                "BUTTONS"
+                                                            ]
+                                                        },
+                                                        "format": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ],
+                                                            "enum": [
+                                                                "IMAGE",
+                                                                "VIDEO",
+                                                                null
+                                                            ]
+                                                        },
+                                                        "text": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ],
+                                                            "maxLength": 160
+                                                        },
+                                                        "example": {
+                                                            "type": [
+                                                                "array",
+                                                                "null"
+                                                            ],
+                                                            "items": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "buttons": {
+                                                            "type": [
+                                                                "array",
+                                                                "null"
+                                                            ],
+                                                            "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "type": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "QUICK_REPLY",
+                                                                            "URL",
+                                                                            "PHONE_NUMBER"
+                                                                        ]
+                                                                    },
+                                                                    "text": {
+                                                                        "type": "string",
+                                                                        "maxLength": 25
+                                                                    },
+                                                                    "url": {
+                                                                        "type": [
+                                                                            "string",
+                                                                            "null"
+                                                                        ]
+                                                                    },
+                                                                    "phone_number": {
+                                                                        "type": [
+                                                                            "string",
+                                                                            "null"
+                                                                        ]
+                                                                    },
+                                                                    "example": {
+                                                                        "type": [
+                                                                            "string",
+                                                                            "null"
+                                                                        ]
+                                                                    }
+                                                                },
+                                                                "required": [
+                                                                    "type",
+                                                                    "text"
+                                                                ]
+                                                            },
+                                                            "maxItems": 2
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "type"
+                                                    ]
+                                                },
+                                                "minItems": 1
+                                            }
+                                        },
+                                        "required": [
+                                            "components"
+                                        ]
+                                    },
+                                    "minItems": 2,
+                                    "maxItems": 10
                                 },
                                 "add_security_recommendation": {
                                     "type": [
@@ -22477,6 +22709,18 @@
                         "format": "binary",
                         "contentMediaType": "application/octet-stream",
                         "description": "Maximum file size: 102400 kilobytes."
+                    },
+                    "card_files": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "format": "binary",
+                            "contentMediaType": "application/octet-stream",
+                            "description": "Maximum file size: 16384 kilobytes."
+                        }
                     }
                 },
                 "required": [
@@ -24906,7 +25150,16 @@
                                 "name",
                                 "email",
                                 "phone",
-                                "document"
+                                "document",
+                                "gender",
+                                "birthday",
+                                "country",
+                                "state",
+                                "city",
+                                "cep",
+                                "street",
+                                "number",
+                                "neighborhood"
                             ]
                         }
                     },
@@ -24921,7 +25174,16 @@
                                         "name",
                                         "email",
                                         "phone",
-                                        "document"
+                                        "document",
+                                        "gender",
+                                        "birthday",
+                                        "country",
+                                        "state",
+                                        "city",
+                                        "cep",
+                                        "street",
+                                        "number",
+                                        "neighborhood"
                                     ]
                                 },
                                 "minItems": 1,
@@ -25987,6 +26249,33 @@
                     },
                     "is_add_user_name": {
                         "type": "boolean"
+                    },
+                    "image": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "binary",
+                        "contentMediaType": "application/octet-stream",
+                        "description": "Maximum file size: 50000 kilobytes."
+                    },
+                    "video": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "binary",
+                        "contentMediaType": "application/octet-stream",
+                        "description": "Maximum file size: 50000 kilobytes."
+                    },
+                    "document": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "binary",
+                        "contentMediaType": "application/octet-stream",
+                        "description": "Maximum file size: 50000 kilobytes."
                     }
                 },
                 "required": [
@@ -26027,6 +26316,69 @@
                                 "maxLength": 255
                             },
                             "document": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "gender": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "birthday": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "country": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "state": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "city": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "cep": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "street": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "number": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 255
+                            },
+                            "neighborhood": {
                                 "type": [
                                     "string",
                                     "null"
@@ -26345,6 +26697,9 @@
                     },
                     "assistant_id": {
                         "type": "string"
+                    },
+                    "is_internal": {
+                        "type": "boolean"
                     }
                 },
                 "title": "TelegramBotData"
@@ -27643,6 +27998,9 @@
                             "null"
                         ],
                         "format": "uuid"
+                    },
+                    "is_internal": {
+                        "type": "boolean"
                     }
                 },
                 "title": "UpdateTelegramBotRequest"
@@ -27881,7 +28239,16 @@
                                 "name",
                                 "email",
                                 "phone",
-                                "document"
+                                "document",
+                                "gender",
+                                "birthday",
+                                "country",
+                                "state",
+                                "city",
+                                "cep",
+                                "street",
+                                "number",
+                                "neighborhood"
                             ]
                         }
                     },
@@ -27896,7 +28263,16 @@
                                         "name",
                                         "email",
                                         "phone",
-                                        "document"
+                                        "document",
+                                        "gender",
+                                        "birthday",
+                                        "country",
+                                        "state",
+                                        "city",
+                                        "cep",
+                                        "street",
+                                        "number",
+                                        "neighborhood"
                                     ]
                                 },
                                 "minItems": 1,
@@ -27940,6 +28316,9 @@
                     },
                     "available_for_new_chat": {
                         "type": "boolean"
+                    },
+                    "is_internal": {
+                        "type": "boolean"
                     }
                 },
                 "title": "UpdateWhatsAppOfficialRequest"
@@ -27954,6 +28333,9 @@
                         "type": "boolean"
                     },
                     "available_for_new_chat": {
+                        "type": "boolean"
+                    },
+                    "is_internal": {
                         "type": "boolean"
                     },
                     "category_id": {
@@ -28423,6 +28805,9 @@
                     "available_for_new_chat": {
                         "type": "boolean"
                     },
+                    "is_internal": {
+                        "type": "boolean"
+                    },
                     "status": {
                         "type": "string"
                     },
@@ -28466,6 +28851,9 @@
                         "type": "boolean"
                     },
                     "availableForNewChat": {
+                        "type": "boolean"
+                    },
+                    "isInternal": {
                         "type": "boolean"
                     }
                 },
